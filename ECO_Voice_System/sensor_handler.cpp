@@ -14,8 +14,6 @@ SensorHandler::SensorHandler() :
     loadVoltage(0),
     power_mW(0),
     lastMotionTime(0) {
-
-    ina219 = new Adafruit_INA219();
 }
 
 bool SensorHandler::init() {
@@ -26,18 +24,18 @@ bool SensorHandler::init() {
 
     // Configure LDR pin (ADC)
     pinMode(LDR_PIN, INPUT);
-    analogSetAttenuation(ADC_11db); // For 0-3.3V range
+    analogSetPinAttenuation(LDR_PIN, ADC_11db); // For 0-3.3V range on LDR pin only
+
+    // Pre-fill LDR smoothing filter with real readings to avoid dark-bias on startup
+    for (int i = 0; i < 10; i++) readLDR();
 
     // Initialize INA219 current sensor
-    if (!ina219->begin()) {
+    if (!ina219.begin()) {
         Serial.println("Failed to initialize INA219!");
         return false;
     }
 
-    // Configure INA219
-    // By default, INA219 is configured for 32V, 2A range
-    // For higher current (up to 3.2A), use:
-    ina219->setCalibration_32V_1A(); // Adjust based on your load
+    ina219.setCalibration_32V_2A(); // 32V range, 2A max — matches CURRENT_THRESHOLD of 2.5A
 
     Serial.println("All sensors initialized successfully");
     return true;
@@ -83,10 +81,10 @@ void SensorHandler::readLDR() {
 
 void SensorHandler::readCurrentSensor() {
     // Read values from INA219
-    shuntVoltage = ina219->getShuntVoltage_mV();
-    busVoltage = ina219->getBusVoltage_V();
-    current_mA = ina219->getCurrent_mA();
-    power_mW = ina219->getPower_mW();
+    shuntVoltage = ina219.getShuntVoltage_mV();
+    busVoltage = ina219.getBusVoltage_V();
+    current_mA = ina219.getCurrent_mA();
+    power_mW = ina219.getPower_mW();
     loadVoltage = busVoltage + (shuntVoltage / 1000.0);
 }
 

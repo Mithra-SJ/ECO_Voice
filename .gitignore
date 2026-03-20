@@ -1,0 +1,8 @@
+# Sensitive credentials — never commit
+ECO_Voice_System/secrets.h
+
+# Arduino build artifacts
+build/
+*.elf
+*.bin
+*.map

@@ -28,6 +28,7 @@ public:
 private:
     bool lightState;
     bool fanState;
+    bool unlockedState;
 
     void updateRelay(int pin, bool state);
 };

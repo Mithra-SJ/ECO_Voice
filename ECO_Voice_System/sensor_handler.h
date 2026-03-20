@@ -23,7 +23,7 @@ public:
     float getPower();             // Watts
 
 private:
-    Adafruit_INA219 *ina219;
+    Adafruit_INA219 ina219;
     bool motionDetected;
     int lightLevel;
     float current_mA;

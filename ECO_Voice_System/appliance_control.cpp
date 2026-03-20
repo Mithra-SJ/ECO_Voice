@@ -7,7 +7,8 @@
 
 ApplianceControl::ApplianceControl() :
     lightState(false),
-    fanState(false) {
+    fanState(false),
+    unlockedState(false) {
 }
 
 void ApplianceControl::init() {
@@ -21,11 +22,12 @@ void ApplianceControl::init() {
     pinMode(LED_GREEN_PIN, OUTPUT);
     pinMode(LED_RED_PIN, OUTPUT);
 
-    // Initialize all to OFF state
+    // Initialize relays off
     digitalWrite(RELAY_LIGHT_PIN, LOW);
     digitalWrite(RELAY_FAN_PIN, LOW);
-    digitalWrite(LED_GREEN_PIN, LOW);
-    digitalWrite(LED_RED_PIN, HIGH); // Start with red LED (locked state)
+
+    // Set initial LED state through the single authoritative path
+    setStatusLED(false); // locked = red LED ON
 
     Serial.println("Appliance Control Ready");
 }
@@ -61,21 +63,12 @@ bool ApplianceControl::isFanOn() {
 }
 
 void ApplianceControl::updateRelay(int pin, bool state) {
-    // Relay module logic:
-    // Most relay modules are active LOW (LOW = ON, HIGH = OFF)
-    // Adjust if your relay is active HIGH
-
-    if (state) {
-        digitalWrite(pin, HIGH); // Turn ON (active HIGH relay)
-    } else {
-        digitalWrite(pin, LOW);  // Turn OFF
-    }
-
-    // If using active LOW relay, invert the logic:
-    // digitalWrite(pin, state ? LOW : HIGH);
+    // Relay is active HIGH per spec (High=ON, Low=OFF)
+    digitalWrite(pin, state ? HIGH : LOW);
 }
 
 void ApplianceControl::setStatusLED(bool unlocked) {
+    unlockedState = unlocked;
     if (unlocked) {
         // System unlocked - Green LED ON, Red LED OFF
         digitalWrite(LED_GREEN_PIN, HIGH);
@@ -99,6 +92,6 @@ void ApplianceControl::blinkStatusLED(bool green, int times) {
         delay(200);
     }
 
-    // Restore status LED state
-    // After blinking, turn back on based on current system state
+    // Restore LED to the correct lock/unlock state
+    setStatusLED(unlockedState);
 }
