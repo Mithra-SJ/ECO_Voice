@@ -15,6 +15,12 @@ Install these through Arduino IDE Library Manager:
    - Author: Adafruit
    - Install: Auto-installed with Adafruit INA219
 
+3. **DHT sensor library** (v1.4.4 or later)
+   - Purpose: Temperature and humidity readings from DHT11 (fan control gate)
+   - Author: Adafruit
+   - Install: Sketch → Include Library → Manage Libraries → Search "DHT sensor library"
+   - Note: Also installs **Adafruit Unified Sensor** (v1.1.9+) as a dependency — accept when prompted
+
 ### Built-in Libraries (No installation needed)
 These are included with ESP32 Arduino core:
 
@@ -70,11 +76,7 @@ Purpose: I2S speaker output with WAV/MP3 support
 
 ### Additional Sensors
 
-#### DHT Temperature/Humidity Sensor
-```
-Library: DHT sensor library (Adafruit)
-Purpose: Environmental monitoring
-```
+#### RTC (Real-Time Clock)
 
 #### RTC (Real-Time Clock)
 ```
@@ -344,13 +346,13 @@ git submodule update --init --recursive
 
 **Error:** INA219 `begin()` returns false
 **Fix:**
-1. Check I2C wiring (SDA=GPIO8, SCL=GPIO9)
+1. Check I2C wiring (SDA=GPIO1, SCL=GPIO2)
 2. Run I2C scanner to detect device
 3. Check INA219 address (default 0x40)
 
 **Error:** I2S `i2s_driver_install()` fails
 **Fix:**
-1. Check I2S pins correct (41, 42, 2)
+1. Check I2S pins correct (SCK=GPIO5, WS=GPIO4, SD=GPIO6)
 2. Verify microphone power (3.3V)
 3. Increase DMA buffer count
 

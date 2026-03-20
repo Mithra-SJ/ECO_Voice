@@ -9,7 +9,7 @@
  *
  * SD Card setup:
  *   Create folder /mp3 on SD card root.
- *   Name files: 0001.mp3, 0002.mp3 ... matching AudioTrack enum order.
+ *   Name files: 0001.mp3, 0002.mp3 ... 0049.mp3 matching AudioTrack enum order.
  */
 
 #include "audio_handler.h"
@@ -65,32 +65,78 @@ void AudioHandler::speak(AudioTrack track) {
 }
 
 AudioTrack AudioHandler::messageToTrack(const char* message) {
-    // strcmp() — zero heap allocation, direct char* comparison
-    if (strcmp(message, "Listening for secret code") == 0)                                  return TRACK_LISTENING_CODE;
-    if (strcmp(message, "Unlocked. Ready for commands") == 0)                               return TRACK_UNLOCKED;
-    if (strcmp(message, "Wrong code. Try again") == 0)                                      return TRACK_WRONG_CODE;
-    if (strcmp(message, "Authentication timeout") == 0)                                     return TRACK_AUTH_TIMEOUT;
-    if (strcmp(message, "System locked") == 0)                                              return TRACK_LOCKED;
-    if (strcmp(message, "Light turned on") == 0)                                            return TRACK_LIGHT_ON;
-    if (strcmp(message, "Light turned off") == 0)                                           return TRACK_LIGHT_OFF;
-    if (strcmp(message, "Fan turned on") == 0)                                              return TRACK_FAN_ON;
-    if (strcmp(message, "Fan turned off") == 0)                                             return TRACK_FAN_OFF;
-    if (strcmp(message, "No motion detected. Do you still want to continue?") == 0)         return TRACK_NO_MOTION;
-    if (strcmp(message, "It's bright already. Do you still want to switch on light?") == 0) return TRACK_BRIGHT;
-    if (strcmp(message, "High current detected. Do you still want to turn on fan?") == 0)   return TRACK_HIGH_CURRENT;
-    if (strcmp(message, "Light not turned on") == 0)                                        return TRACK_LIGHT_NOT_ON;
-    if (strcmp(message, "Fan not turned on") == 0)                                          return TRACK_FAN_NOT_ON;
-    if (strcmp(message, "Fan not turned on for safety") == 0)                               return TRACK_FAN_NOT_ON_SAFETY;
-    if (strcmp(message, "Command not recognized") == 0)                                     return TRACK_CMD_UNKNOWN;
-    if (strcmp(message, "Motion detected.") == 0)                                           return TRACK_STATUS_MOTION_YES;
-    if (strcmp(message, "No motion.") == 0)                                                 return TRACK_STATUS_MOTION_NO;
-    if (strcmp(message, "Light is on.") == 0)                                               return TRACK_STATUS_LIGHT_ON;
-    if (strcmp(message, "Light is off.") == 0)                                              return TRACK_STATUS_LIGHT_OFF;
-    if (strcmp(message, "Fan is on.") == 0)                                                 return TRACK_STATUS_FAN_ON;
-    if (strcmp(message, "Fan is off.") == 0)                                                return TRACK_STATUS_FAN_OFF;
+    // Wake & Security
+    if (strcmp(message, "ECO activated. Listening for secret code.") == 0)              return TRACK_LISTENING_CODE;
+    if (strcmp(message, "Secret code correct. System unlocked.") == 0)                  return TRACK_UNLOCKED;
+    if (strcmp(message, "Wrong code. Try again.") == 0)                                 return TRACK_WRONG_CODE;
+    if (strcmp(message, "Time expired. System locked.") == 0)                           return TRACK_AUTH_TIMEOUT;
+    if (strcmp(message, "System locked successfully.") == 0)                            return TRACK_LOCKED;
+    if (strcmp(message, "System is currently locked. Please say ECO to unlock.") == 0)  return TRACK_SYSTEM_LOCKED_MSG;
 
-    // Unknown message — log and return CMD_UNKNOWN track.
-    // Caller (speak(const char*)) will play it once. Do NOT call playError() here.
+    // General Listening & Confirmation
+    if (strcmp(message, "Listening for command.") == 0)                                 return TRACK_LISTENING_CMD;
+    if (strcmp(message, "Command received.") == 0)                                      return TRACK_CMD_RECEIVED;
+    if (strcmp(message, "Sorry, I did not understand. Please repeat.") == 0)            return TRACK_CMD_UNKNOWN;
+    if (strcmp(message, "Processing your request.") == 0)                               return TRACK_PROCESSING;
+
+    // Light Control
+    if (strcmp(message, "Turning on the light.") == 0)                                  return TRACK_LIGHT_TURNING_ON;
+    if (strcmp(message, "Turning off the light.") == 0)                                 return TRACK_LIGHT_TURNING_OFF;
+    if (strcmp(message, "Light is already on.") == 0)                                   return TRACK_LIGHT_ALREADY_ON;
+    if (strcmp(message, "Light is already off.") == 0)                                  return TRACK_LIGHT_ALREADY_OFF;
+    if (strcmp(message, "It is already bright. Do you still want to turn on the light?") == 0) return TRACK_BRIGHT;
+    if (strcmp(message, "Light turned on successfully.") == 0)                          return TRACK_LIGHT_ON;
+    if (strcmp(message, "Light remains off.") == 0)                                     return TRACK_LIGHT_REMAINS_OFF;
+
+    // Fan Control
+    if (strcmp(message, "Turning on the fan.") == 0)                                    return TRACK_FAN_TURNING_ON;
+    if (strcmp(message, "Turning off the fan.") == 0)                                   return TRACK_FAN_TURNING_OFF;
+    if (strcmp(message, "Fan is already running.") == 0)                                return TRACK_FAN_ALREADY_ON;
+    if (strcmp(message, "Fan is already off.") == 0)                                    return TRACK_FAN_ALREADY_OFF;
+    if (strcmp(message, "Temperature is low. Do you still want to turn on the fan?") == 0) return TRACK_LOW_TEMP_HUM;
+    if (strcmp(message, "Fan turned on successfully.") == 0)                            return TRACK_FAN_ON;
+    if (strcmp(message, "Fan remains off.") == 0)                                       return TRACK_FAN_REMAINS_OFF;
+
+    // Motion Detection
+    if (strcmp(message, "No motion detected. Do you still want to continue?") == 0)     return TRACK_NO_MOTION;
+    if (strcmp(message, "Motion detected.") == 0)                                       return TRACK_MOTION_DETECTED;
+
+    // Current & Voltage Monitoring
+    if (strcmp(message, "Current is within normal range.") == 0)                        return TRACK_CURRENT_NORMAL;
+    if (strcmp(message, "Warning. Low voltage detected.") == 0)                         return TRACK_LOW_VOLTAGE;
+    if (strcmp(message, "Warning. Voltage fluctuation detected.") == 0)                 return TRACK_VOLT_FLUCTUATION;
+    if (strcmp(message, "Overcurrent detected. Please check the appliance.") == 0)      return TRACK_OVERCURRENT;
+
+    // Temperature & Humidity
+    if (strcmp(message, "The current temperature is.") == 0)                            return TRACK_TEMP_PREFIX;
+    if (strcmp(message, "Degrees Celsius.") == 0)                                       return TRACK_TEMP_SUFFIX;
+    if (strcmp(message, "The current humidity is.") == 0)                               return TRACK_HUMIDITY_PREFIX;
+    if (strcmp(message, "Percent.") == 0)                                               return TRACK_HUMIDITY_SUFFIX;
+
+    // Status Report
+    if (strcmp(message, "Here is the system status.") == 0)                             return TRACK_STATUS_INTRO;
+    if (strcmp(message, "Light is currently on.") == 0)                                 return TRACK_STATUS_LIGHT_ON;
+    if (strcmp(message, "Light is currently off.") == 0)                                return TRACK_STATUS_LIGHT_OFF;
+    if (strcmp(message, "Fan is currently on.") == 0)                                   return TRACK_STATUS_FAN_ON;
+    if (strcmp(message, "Fan is currently off.") == 0)                                  return TRACK_STATUS_FAN_OFF;
+    if (strcmp(message, "Motion status updated.") == 0)                                 return TRACK_STATUS_MOTION_UPD;
+
+    // Yes / No Confirmation
+    if (strcmp(message, "Please say yes or no.") == 0)                                  return TRACK_ASK_YES_NO;
+    if (strcmp(message, "Action confirmed.") == 0)                                      return TRACK_ACTION_CONFIRMED;
+    if (strcmp(message, "Action cancelled.") == 0)                                      return TRACK_ACTION_CANCELLED;
+
+    // System States
+    if (strcmp(message, "System ready.") == 0)                                          return TRACK_SYSTEM_READY;
+    if (strcmp(message, "System entering sleep mode.") == 0)                            return TRACK_SLEEP_MODE;
+    if (strcmp(message, "Microphone activated.") == 0)                                  return TRACK_MIC_ACTIVATED;
+    if (strcmp(message, "Goodbye.") == 0)                                               return TRACK_GOODBYE;
+
+    // Optional
+    if (strcmp(message, "Edge processing active.") == 0)                                return TRACK_EDGE_ACTIVE;
+    if (strcmp(message, "All systems functioning normally.") == 0)                      return TRACK_ALL_OK;
+
+    // Unknown — log and play "did not understand" track
     Serial.print("[AUDIO] No track mapped for: ");
     Serial.println(message);
     return TRACK_CMD_UNKNOWN;

@@ -43,7 +43,7 @@ void handleAuthenticationState();
 void handleUnlockedState();
 void processCommand(const String& command);
 void handleLightOn(bool motionDetected, int lightLevel);
-void handleFanOn(bool motionDetected, float current);
+void handleFanOn(bool motionDetected);
 void reportStatus();
 
 void setup() {
@@ -66,6 +66,7 @@ void setup() {
     voiceRecog.init(&sensors);   // pass sensors so recognition loops stay fresh
 
     Serial.println("System Ready. Say 'ECO' to wake up!");
+    audio.speak("System ready.");
 }
 
 void loop() {
@@ -92,7 +93,7 @@ void loop() {
 void handleIdleState() {
     if (voiceRecog.detectWakeWord()) {
         Serial.println("Wake word detected!");
-        audio.speak("Listening for secret code");
+        audio.speak("ECO activated. Listening for secret code.");
 
         currentState  = STATE_WAITING_CODE;
         authStartTime = millis();
@@ -107,7 +108,7 @@ void handleAuthenticationState() {
     // Enforce 30-second window
     if (millis() - authStartTime > AUTH_TIMEOUT_MS) {
         Serial.println("Authentication timeout");
-        audio.speak("Authentication timeout");
+        audio.speak("Time expired. System locked.");
         currentState = STATE_IDLE;
         appliances.setStatusLED(false);
         return;
@@ -118,7 +119,7 @@ void handleAuthenticationState() {
 
     if (voiceRecog.verifySecretCode(code)) {
         Serial.println("Secret code correct - Unlocked!");
-        audio.speak("Unlocked. Ready for commands");
+        audio.speak("Secret code correct. System unlocked.");
 
         currentState    = STATE_UNLOCKED;
         lastCommandTime = millis();
@@ -133,11 +134,11 @@ void handleAuthenticationState() {
 
         if (authAttempts >= MAX_AUTH_ATTEMPTS) {
             Serial.println("Max attempts reached. Locking out.");
-            audio.speak("System locked");
+            audio.speak("System locked successfully.");
             currentState = STATE_IDLE;
             appliances.setStatusLED(false);
         } else {
-            audio.speak("Wrong code. Try again");
+            audio.speak("Wrong code. Try again.");
         }
     }
 }
@@ -146,7 +147,7 @@ void handleUnlockedState() {
     // Auto-lock on inactivity
     if (millis() - lastCommandTime > UNLOCK_TIMEOUT_MS) {
         Serial.println("Auto-lock: inactivity timeout");
-        audio.speak("System locked");
+        audio.speak("System locked successfully.");
         currentState = STATE_IDLE;
         appliances.setStatusLED(false);
         appliances.turnOffAll();
@@ -162,7 +163,7 @@ void handleUnlockedState() {
 
     if (command == "LOCK") {
         Serial.println("Locking system");
-        audio.speak("System locked");
+        audio.speak("System locked successfully.");
         currentState = STATE_IDLE;
         appliances.setStatusLED(false);
         appliances.turnOffAll();
@@ -174,76 +175,87 @@ void handleUnlockedState() {
 void processCommand(const String& command) {
     bool motionDetected = sensors.isMotionDetected();
     int lightLevel      = sensors.getLightLevel();
-    float current       = sensors.getCurrent();
+
+    // INA219 voltage notifications — speak before acting on any ON command
+    if (command == "LIGHT_ON" || command == "FAN_ON") {
+        if (sensors.isVoltageLow())         audio.speak("Warning. Low voltage detected.");
+        if (sensors.isVoltageFluctuating()) audio.speak("Warning. Voltage fluctuation detected.");
+    }
 
     if      (command == "LIGHT_ON")  handleLightOn(motionDetected, lightLevel);
-    else if (command == "LIGHT_OFF") { appliances.setLight(false); audio.speak("Light turned off"); }
-    else if (command == "FAN_ON")    handleFanOn(motionDetected, current);
-    else if (command == "FAN_OFF")   { appliances.setFan(false); audio.speak("Fan turned off"); }
+    else if (command == "LIGHT_OFF") { appliances.setLight(false); audio.speak("Turning off the light."); }
+    else if (command == "FAN_ON")    handleFanOn(motionDetected);
+    else if (command == "FAN_OFF")   { appliances.setFan(false); audio.speak("Turning off the fan."); }
     else if (command == "STATUS")    reportStatus();
-    else                             audio.speak("Command not recognized");
+    else                             audio.speak("Sorry, I did not understand. Please repeat.");
 }
 
 void handleLightOn(bool motionDetected, int lightLevel) {
     if (!motionDetected) {
         audio.speak("No motion detected. Do you still want to continue?");
         if (voiceRecog.recognizeYesNo() != "YES") {
-            audio.speak("Light not turned on");
+            audio.speak("Light remains off.");
             return;
         }
     }
 
     if (lightLevel > BRIGHTNESS_THRESHOLD) {
-        audio.speak("It's bright already. Do you still want to switch on light?");
+        audio.speak("It is already bright. Do you still want to turn on the light?");
         if (voiceRecog.recognizeYesNo() != "YES") {
-            audio.speak("Light not turned on");
+            audio.speak("Light remains off.");
             return;
         }
     }
 
     appliances.setLight(true);
-    audio.speak("Light turned on");
+    audio.speak("Light turned on successfully.");
 }
 
-void handleFanOn(bool motionDetected, float current) {
+void handleFanOn(bool motionDetected) {
     if (!motionDetected) {
         audio.speak("No motion detected. Do you still want to continue?");
         if (voiceRecog.recognizeYesNo() != "YES") {
-            audio.speak("Fan not turned on");
+            audio.speak("Fan remains off.");
             return;
         }
     }
 
-    if (current > CURRENT_THRESHOLD) {
-        audio.speak("High current detected. Do you still want to turn on fan?");
+    // DHT11 gate — low temp or low humidity means fan is not needed
+    float temp     = sensors.getTemperature();
+    float humidity = sensors.getHumidity();
+    if (temp < TEMP_LOW_THRESHOLD || humidity < HUMIDITY_LOW_THRESHOLD) {
+        audio.speak("Temperature is low. Do you still want to turn on the fan?");
         if (voiceRecog.recognizeYesNo() != "YES") {
-            audio.speak("Fan not turned on for safety");
+            audio.speak("Fan remains off.");
             return;
         }
     }
 
     appliances.setFan(true);
-    audio.speak("Fan turned on");
+    audio.speak("Fan turned on successfully.");
 }
 
 void reportStatus() {
-    bool motion  = sensors.isMotionDetected();
-    int light    = sensors.getLightLevel();
+    bool motion   = sensors.isMotionDetected();
+    int light     = sensors.getLightLevel();
+    float temp    = sensors.getTemperature();
+    float humidity = sensors.getHumidity();
     float current = sensors.getCurrent();
     float voltage = sensors.getVoltage();
-    bool lightOn = appliances.isLightOn();
-    bool fanOn   = appliances.isFanOn();
+    bool lightOn  = appliances.isLightOn();
+    bool fanOn    = appliances.isFanOn();
 
-    char statusMsg[200];
+    char statusMsg[250];
     snprintf(statusMsg, sizeof(statusMsg),
-             "Motion: %s. Light level: %d. Current: %.2fA. Voltage: %.2fV. Light: %s. Fan: %s.",
-             motion   ? "detected" : "not detected",
-             light, current, voltage,
+             "Motion: %s. Light: %d. Temp: %.1fC. Humidity: %.1f%%. Current: %.2fA. Voltage: %.2fV. Light: %s. Fan: %s.",
+             motion ? "detected" : "not detected",
+             light, temp, humidity, current, voltage,
              lightOn ? "on" : "off",
              fanOn   ? "on" : "off");
     Serial.println(statusMsg);
 
-    audio.speak(motion  ? "Motion detected." : "No motion.");
-    audio.speak(lightOn ? "Light is on."     : "Light is off.");
-    audio.speak(fanOn   ? "Fan is on."       : "Fan is off.");
+    audio.speak("Here is the system status.");
+    audio.speak(motion  ? "Motion detected."      : "No motion detected. Do you still want to continue?");
+    audio.speak(lightOn ? "Light is currently on." : "Light is currently off.");
+    audio.speak(fanOn   ? "Fan is currently on."   : "Fan is currently off.");
 }

@@ -20,6 +20,9 @@
 // LDR (Light Dependent Resistor)
 #define LDR_PIN           8   // ADC pin
 
+// DHT11 Temperature & Humidity Sensor
+#define DHT11_PIN         9
+
 // INA219 Current Sensor (I2C)
 #define INA219_SDA        1
 #define INA219_SCL        2
@@ -43,10 +46,17 @@
 #define I2S_CHANNEL       I2S_CHANNEL_FMT_ONLY_LEFT
 
 // ===== THRESHOLDS =====
-#define BRIGHTNESS_THRESHOLD    600   // ADC value (0-4095), higher = brighter
-#define CURRENT_THRESHOLD       2.5   // Amps
-#define MOTION_TIMEOUT_MS       5000  // Motion detection persistence
-#define WAKE_THRESHOLD          500   // Energy threshold for voice activity detection
+#define BRIGHTNESS_THRESHOLD          600   // ADC value (0-4095), higher = brighter
+#define MOTION_TIMEOUT_MS             5000  // Motion detection persistence
+#define WAKE_THRESHOLD                500   // Energy threshold for voice activity detection
+
+// DHT11 — Fan control gate
+#define TEMP_LOW_THRESHOLD            22.0  // °C  — below this, fan not recommended
+#define HUMIDITY_LOW_THRESHOLD        40.0  // %RH — below this, fan not recommended
+
+// INA219 — Voltage monitoring (informational notifications)
+#define LOW_VOLTAGE_THRESHOLD         10.5  // Volts — below this, warn user
+#define VOLTAGE_FLUCTUATION_THRESHOLD  1.5  // Volts delta between readings — warn user
 
 // ===== AUTHENTICATION =====
 #define AUTH_TIMEOUT_MS         30000 // 30 seconds to enter secret code
