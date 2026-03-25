@@ -6,7 +6,7 @@ dependencies:
       require: private
       version: '>=5.0'
     source:
-      registry_url: https://components.espressif.com/
+      registry_url: https://components.espressif.com
       type: service
     version: 0.3.1
   espressif/esp-dsp:
@@ -16,17 +16,34 @@ dependencies:
       require: private
       version: '>=4.2'
     source:
-      registry_url: https://components.espressif.com/
+      registry_url: https://components.espressif.com
       type: service
     version: 1.7.0
+  espressif/esp-sr:
+    component_hash: c518b25995cf03021a09442feedb7e40acba9f15d6aa903ebdfe0f657b08197b
+    dependencies:
+    - name: espressif/dl_fft
+      registry_url: https://components.espressif.com
+      require: private
+      version: '>=0.2.0'
+    - name: espressif/esp-dsp
+      registry_url: https://components.espressif.com
+      require: private
+      version: 1.7.0
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 2.4.0
   idf:
     source:
       type: idf
     version: 5.5.0
 direct_dependencies:
-- espressif/dl_fft
-- espressif/esp-dsp
+- espressif/esp-sr
 - idf
-manifest_hash: 9ea9f0a504134bc81f0f9d93cfcb86aac0af84a8efd644f0269aa86988b347c1
+manifest_hash: df9cd51b675e4ff2eb805c190df6f6a707a5b1efdc47b4a245156226563f7cab
 target: esp32s3
 version: 2.0.0

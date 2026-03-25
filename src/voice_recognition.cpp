@@ -98,8 +98,8 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
 
     // Register speech commands with MultiNet
     // Command IDs must match the switch-case in recognizeCommand() and SECRET_CODE_CMD_ID in config.h
-    esp_mn_commands_t *cmds = esp_mn_commands_alloc(sr_handle.mn_iface, sr_handle.mn_model);
-    if (!cmds) {
+    esp_err_t cmds_err = esp_mn_commands_alloc(sr_handle.mn_iface, sr_handle.mn_model);
+    if (cmds_err != ESP_OK) {
         ESP_LOGE("VOICE", "esp_mn_commands_alloc failed — cannot register commands.");
         return false;
     }
@@ -112,10 +112,9 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
     esp_mn_commands_add(6, "yes");
     esp_mn_commands_add(7, "no");
     esp_mn_commands_add(SECRET_CODE_CMD_ID, SECRET_CODE_PHRASE);  // secret code phrase from secrets.h
-    esp_err_t mn_err = esp_mn_commands_update();
-    if (mn_err != ESP_OK) {
-        ESP_LOGE("VOICE", "MultiNet command update failed: %s", esp_err_to_name(mn_err));
-        return false;
+    esp_mn_error_t *mn_err = esp_mn_commands_update();
+    if (mn_err && mn_err->num > 0) {
+        ESP_LOGW("VOICE", "MultiNet: %d command phrase(s) failed to register.", mn_err->num);
     }
     ESP_LOGI("VOICE", "MultiNet commands registered (secret code phrase: \"%s\").", SECRET_CODE_PHRASE);
 
