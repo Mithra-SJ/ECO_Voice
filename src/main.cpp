@@ -53,13 +53,16 @@ extern "C" void app_main(void) {
         ESP_LOGW("MAIN", "DFPlayer init failed. Check SD card and wiring.");
         ESP_LOGW("MAIN", "System will run with Serial-only feedback.");
     }
-    voiceRecog.init(&sensors);   // pass sensors
+    if (!voiceRecog.init(&sensors)) {
+        ESP_LOGE("MAIN", "Voice recognition init failed. Check ESP-SR model on SD card.");
+        while (1) { vTaskDelay(1000 / portTICK_PERIOD_MS); }  // halt
+    }
 
     ESP_LOGI("MAIN", "Ready. Say 'hi esp' to wake up!\n");
-    audio.speak("System ready.");
+    audio.speak(TRACK_SYSTEM_READY);
 
     // Create main task
-    xTaskCreate(main_task, "main_task", 4096, NULL, 5, NULL);
+    xTaskCreate(main_task, "main_task", 8192, NULL, 5, NULL);
 }
 
 static void main_task(void *pvParameters) {
@@ -87,8 +90,8 @@ static void main_task(void *pvParameters) {
 
 static void handleIdleState() {
     if (voiceRecog.detectWakeWord()) {
-        ESP_LOGI("VOICE", "Wake word detected!");
-        audio.speak("Hi xiaowen activated. Listening for secret code.");
+        ESP_LOGI("VOICE", "Wake word 'hi esp' detected!");
+        audio.speak(TRACK_LISTENING_CODE);
 
         currentState = STATE_WAITING_CODE;
         authStartTime = esp_timer_get_time() / 1000;
@@ -125,10 +128,24 @@ static void handleAuthenticationState() {
         ESP_LOGI("AUTH", "Wrong code. Attempt %d/%d", authAttempts, MAX_AUTH_ATTEMPTS);
 
         if (authAttempts >= MAX_AUTH_ATTEMPTS) {
-            ESP_LOGI("AUTH", "Max attempts reached. Locking out.");
-            audio.speak("System locked successfully.");
-            currentState = STATE_IDLE;
-            appliances.setStatusLED(false);
+            // 3 failures reached — enforce 30-second penalty, then allow fresh attempts
+            ESP_LOGI("AUTH", "Max attempts reached. Enforcing %d-second lockout.", AUTH_LOCKOUT_MS / 1000);
+            audio.speak("Too many wrong attempts. Please wait 30 seconds.");
+            appliances.setStatusLED(false);       // red LED during lockout
+            appliances.blinkStatusLED(false, 3);  // blink red to signal lockout
+            // Wait AUTH_LOCKOUT_MS while keeping sensors live
+            uint32_t lockStart = esp_timer_get_time() / 1000;
+            while ((esp_timer_get_time() / 1000 - lockStart) < AUTH_LOCKOUT_MS) {
+                sensors.update();
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+            }
+
+            // Reset for a fresh round — user stays in STATE_WAITING_CODE
+            authAttempts  = 0;
+            authStartTime = esp_timer_get_time() / 1000;
+            ESP_LOGI("AUTH", "Lockout over. Accepting attempts again.");
+            audio.speak("Listening for secret code.");
+            appliances.blinkStatusLED(true, 2);
         } else {
             audio.speak("Wrong code. Try again.");
         }
@@ -167,12 +184,6 @@ static void processCommand(const std::string& command) {
     bool motionDetected = sensors.isMotionDetected();
     int lightLevel = sensors.getLightLevel();
 
-    // INA219 voltage notifications — speak before acting on any ON command
-    if (command == "LIGHT_ON" || command == "FAN_ON") {
-        if (sensors.isVoltageLow())         audio.speak("Warning. Low voltage detected.");
-        if (sensors.isVoltageFluctuating()) audio.speak("Warning. Voltage fluctuation detected.");
-    }
-
     if      (command == "LIGHT_ON")  handleLightOn(motionDetected, lightLevel);
     else if (command == "LIGHT_OFF") { appliances.setLight(false); audio.speak("Turning off the light."); }
     else if (command == "FAN_ON")    handleFanOn(motionDetected);
@@ -198,6 +209,10 @@ static void handleLightOn(bool motionDetected, int lightLevel) {
         }
     }
 
+    // Voltage notifications only once we know the command will proceed
+    if (sensors.isVoltageLow())         audio.speak("Warning. Low voltage detected.");
+    if (sensors.isVoltageFluctuating()) audio.speak("Warning. Voltage fluctuation detected.");
+
     appliances.setLight(true);
     audio.speak("Light turned on successfully.");
 }
@@ -222,6 +237,10 @@ static void handleFanOn(bool motionDetected) {
         }
     }
 
+    // Voltage notifications only once we know the command will proceed
+    if (sensors.isVoltageLow())         audio.speak("Warning. Low voltage detected.");
+    if (sensors.isVoltageFluctuating()) audio.speak("Warning. Voltage fluctuation detected.");
+
     appliances.setFan(true);
     audio.speak("Fan turned on successfully.");
 }
@@ -242,8 +261,22 @@ static void reportStatus() {
              lightOn ? "on" : "off",
              fanOn ? "on" : "off");
 
-    audio.speak("Here is the system status.");
-    audio.speak(motion ? "Motion detected." : "No motion detected.");
-    audio.speak(lightOn ? "Light is currently on." : "Light is currently off.");
-    audio.speak(fanOn ? "Fan is currently on." : "Fan is currently off.");
+    audio.speak(TRACK_STATUS_INTRO);
+    audio.speak(motion ? TRACK_MOTION_DETECTED : TRACK_STATUS_MOTION_UPD);
+    audio.speak(lightOn ? TRACK_STATUS_LIGHT_ON  : TRACK_STATUS_LIGHT_OFF);
+    audio.speak(fanOn   ? TRACK_STATUS_FAN_ON    : TRACK_STATUS_FAN_OFF);
+
+    // Temperature & humidity status
+    audio.speak(TRACK_TEMP_PREFIX);      // "Temperature is"
+    audio.speak(TRACK_TEMP_SUFFIX);      // "degrees Celsius"
+    audio.speak(TRACK_HUMIDITY_PREFIX);  // "Humidity is"
+    audio.speak(TRACK_HUMIDITY_SUFFIX);  // "percent"
+    if (temp < TEMP_LOW_THRESHOLD || humidity < HUMIDITY_LOW_THRESHOLD) {
+        audio.speak(TRACK_LOW_TEMP_HUM); // "Temperature or humidity is low"
+    }
+
+    // Voltage status
+    if (sensors.isVoltageLow())              audio.speak(TRACK_LOW_VOLTAGE);
+    else if (sensors.isVoltageFluctuating()) audio.speak(TRACK_VOLT_FLUCTUATION);
+    else                                     audio.speak(TRACK_CURRENT_NORMAL);
 }

@@ -54,15 +54,17 @@
 #define TEMP_LOW_THRESHOLD            22.0  // °C  — below this, fan not recommended
 #define HUMIDITY_LOW_THRESHOLD        40.0  // %RH — below this, fan not recommended
 
-// INA219 — Voltage monitoring (informational notifications)
-#define LOW_VOLTAGE_THRESHOLD         10.5  // Volts — below this, warn user
-#define VOLTAGE_FLUCTUATION_THRESHOLD  1.5  // Volts delta between readings — warn user
+// INA219 — Voltage monitoring (informational notifications) — tuned for 5V load
+#define LOW_VOLTAGE_THRESHOLD         4.5f  // Volts — below this, warn user (90% of 5V)
+#define VOLTAGE_FLUCTUATION_THRESHOLD 0.3f  // Volts delta between readings — warn user
 
 // ===== AUTHENTICATION =====
-#define AUTH_TIMEOUT_MS         30000 // 30 seconds to enter secret code
-#define MAX_AUTH_ATTEMPTS       3     // Failed attempts before lockout
+#define AUTH_TIMEOUT_MS         30000 // 30 seconds per attempt window
+#define MAX_AUTH_ATTEMPTS       3     // Wrong attempts before lockout penalty
+#define AUTH_LOCKOUT_MS         30000 // 30-second wait after MAX_AUTH_ATTEMPTS failures
 
 // ===== VOICE RECOGNITION SETTINGS =====
+#define SECRET_CODE_CMD_ID      8     // MultiNet command ID reserved for secret code phrase
 #define WAKE_WORD               "hi esp"
 #define WAKE_CONFIDENCE         0.7   // Confidence threshold (0.0 - 1.0)
 #define COMMAND_TIMEOUT_MS      5000  // Time to wait for command after wake

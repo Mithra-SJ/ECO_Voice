@@ -46,7 +46,6 @@ private:
     int16_t audioBuffer[16000]; // 1 second at 16kHz
     
     void configureI2S();
-    std::string readSerialInput(unsigned long timeoutMs);
 };
 
 #endif // VOICE_RECOGNITION_H

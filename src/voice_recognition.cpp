@@ -19,8 +19,6 @@
 #include "esp_mn_speech_commands.h"
 #include "esp_log.h"
 #include "driver/i2s.h"
-#include "driver/uart.h"
-#include "esp_heap_caps.h"
 #include "esp_timer.h"
 
 VoiceRecognition::VoiceRecognition() : initialized(false), sensorHandler(nullptr) {
@@ -42,19 +40,6 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
 
     // Configure I2S for INMP441 microphone
     configureI2S();
-
-    // Configure UART for secret code input (USB serial)
-    uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_APB
-    };
-    uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
-    uart_param_config(UART_NUM_0, &uart_config);
-    uart_set_pin(UART_NUM_0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
 
     // Load model file list
     srmodel_list_t *models = esp_srmodel_init("model");
@@ -110,7 +95,30 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
     }
 
     esp_srmodel_deinit(models);
-    
+
+    // Register speech commands with MultiNet
+    // Command IDs must match the switch-case in recognizeCommand() and SECRET_CODE_CMD_ID in config.h
+    esp_mn_commands_t *cmds = esp_mn_commands_alloc(sr_handle.mn_iface, sr_handle.mn_model);
+    if (!cmds) {
+        ESP_LOGE("VOICE", "esp_mn_commands_alloc failed — cannot register commands.");
+        return false;
+    }
+    esp_mn_commands_add(0, "light on");
+    esp_mn_commands_add(1, "light off");
+    esp_mn_commands_add(2, "fan on");
+    esp_mn_commands_add(3, "fan off");
+    esp_mn_commands_add(4, "status");
+    esp_mn_commands_add(5, "eco lock");
+    esp_mn_commands_add(6, "yes");
+    esp_mn_commands_add(7, "no");
+    esp_mn_commands_add(SECRET_CODE_CMD_ID, SECRET_CODE_PHRASE);  // secret code phrase from secrets.h
+    esp_err_t mn_err = esp_mn_commands_update();
+    if (mn_err != ESP_OK) {
+        ESP_LOGE("VOICE", "MultiNet command update failed: %s", esp_err_to_name(mn_err));
+        return false;
+    }
+    ESP_LOGI("VOICE", "MultiNet commands registered (secret code phrase: \"%s\").", SECRET_CODE_PHRASE);
+
     ESP_LOGI("VOICE", "ESP-SR initialized successfully.");
     initialized = true;
     return true;
@@ -172,36 +180,60 @@ bool VoiceRecognition::detectWakeWord() {
 std::string VoiceRecognition::recognizeCommand() {
     if (!initialized || !sr_handle.mn_model) return "";
 
-    ESP_LOGI("VOICE", "Listening for command...");
-    
-    // Read audio
-    size_t bytes_read;
-    esp_err_t ret = i2s_read(I2S_NUM_0, audioBuffer, sizeof(audioBuffer), &bytes_read, 100 / portTICK_PERIOD_MS);
-    
-    if (ret != ESP_OK || bytes_read < sizeof(audioBuffer)) {
-        return "";
-    }
+    ESP_LOGI("VOICE", "Listening for command (timeout=%dms)...", COMMAND_TIMEOUT_MS);
 
-    // Recognize command
-    int command_id = sr_handle.mn_iface->detect(sr_handle.mn_model, audioBuffer);
-    
-    if (command_id >= 0) {
-        switch (command_id) {
-            case 0: return "LIGHT_ON";
-            case 1: return "LIGHT_OFF";
-            case 2: return "FAN_ON";
-            case 3: return "FAN_OFF";
-            case 4: return "STATUS";
-            case 5: return "LOCK";
+    uint32_t start = esp_timer_get_time() / 1000;
+    while ((esp_timer_get_time() / 1000 - start) < COMMAND_TIMEOUT_MS) {
+        size_t bytes_read;
+        esp_err_t ret = i2s_read(I2S_NUM_0, audioBuffer, sizeof(audioBuffer),
+                                 &bytes_read, pdMS_TO_TICKS(100));
+        if (ret == ESP_OK && bytes_read >= sizeof(audioBuffer)) {
+            int command_id = sr_handle.mn_iface->detect(sr_handle.mn_model, audioBuffer);
+            if (command_id >= 0) {
+                switch (command_id) {
+                    case 0: return "LIGHT_ON";
+                    case 1: return "LIGHT_OFF";
+                    case 2: return "FAN_ON";
+                    case 3: return "FAN_OFF";
+                    case 4: return "STATUS";
+                    case 5: return "LOCK";
+                }
+            }
         }
+        vTaskDelay(10 / portTICK_PERIOD_MS);
     }
-    return "";
+    return "";  // nothing heard within COMMAND_TIMEOUT_MS
 }
 
 std::string VoiceRecognition::recognizeSecretCode() {
-    // Use serial for secret code (fallback for now)
-    ESP_LOGI("VOICE", "Enter secret code:");
-    return readSerialInput(30000);
+    if (!initialized || !sr_handle.mn_model) return "";
+
+    // Listen for up to 3 seconds for the secret code phrase (SECRET_CODE_CMD_ID = 8).
+    // Returns SECRET_CODE string if the phrase is recognised.
+    // Returns "WRONG" if any other command is heard (counted as a bad attempt by caller).
+    // Returns ""      if no speech detected in this window (caller loops again).
+    ESP_LOGI("VOICE", "Listening for secret code (cmd_id=%d, phrase=\"%s\")...",
+             SECRET_CODE_CMD_ID, SECRET_CODE_PHRASE);
+
+    uint32_t start = esp_timer_get_time() / 1000;
+    while ((esp_timer_get_time() / 1000 - start) < 3000) {
+        size_t bytes_read;
+        esp_err_t ret = i2s_read(I2S_NUM_0, audioBuffer, sizeof(audioBuffer),
+                                 &bytes_read, pdMS_TO_TICKS(100));
+        if (ret == ESP_OK && bytes_read >= sizeof(audioBuffer)) {
+            int cmd_id = sr_handle.mn_iface->detect(sr_handle.mn_model, audioBuffer);
+            if (cmd_id == SECRET_CODE_CMD_ID) {
+                ESP_LOGI("VOICE", "Secret code recognised.");
+                return std::string(SECRET_CODE);
+            } else if (cmd_id >= 0) {
+                // Something was spoken but it was not the secret code
+                ESP_LOGI("VOICE", "Wrong speech input for secret code (cmd_id=%d).", cmd_id);
+                return "WRONG";
+            }
+        }
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+    return "";  // nothing heard this window — caller will loop within 30-second auth window
 }
 
 bool VoiceRecognition::verifySecretCode(const std::string& code) {
@@ -217,48 +249,23 @@ bool VoiceRecognition::verifySecretCode(const std::string& code) {
 std::string VoiceRecognition::recognizeYesNo() {
     if (!initialized || !sr_handle.mn_model) return "NO";
 
-    ESP_LOGI("VOICE", "Say yes or no...");
-    
-    size_t bytes_read;
-    esp_err_t ret = i2s_read(I2S_NUM_0, audioBuffer, sizeof(audioBuffer), &bytes_read, 100 / portTICK_PERIOD_MS);
-    
-    if (ret != ESP_OK || bytes_read < sizeof(audioBuffer)) {
-        return "NO";
-    }
+    ESP_LOGI("VOICE", "Say yes or no (timeout=%dms)...", YES_NO_TIMEOUT_MS);
 
-    int response = sr_handle.mn_iface->detect(sr_handle.mn_model, audioBuffer);
-    if (response == 6) return "YES";
-    if (response == 7) return "NO";
+    uint32_t start = esp_timer_get_time() / 1000;
+    while ((esp_timer_get_time() / 1000 - start) < YES_NO_TIMEOUT_MS) {
+        size_t bytes_read;
+        esp_err_t ret = i2s_read(I2S_NUM_0, audioBuffer, sizeof(audioBuffer),
+                                 &bytes_read, pdMS_TO_TICKS(100));
+        if (ret == ESP_OK && bytes_read >= sizeof(audioBuffer)) {
+            int response = sr_handle.mn_iface->detect(sr_handle.mn_model, audioBuffer);
+            if (response == 6) return "YES";
+            if (response == 7) return "NO";
+        }
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+    ESP_LOGW("VOICE", "Yes/No timeout — defaulting to NO");
     return "NO";
 }
 
-std::string VoiceRecognition::readSerialInput(unsigned long timeoutMs) {
-    ESP_LOGI("VOICE", "> ");
-    uint32_t startTime = esp_timer_get_time() / 1000;
-    std::string input = "";
-
-    while ((esp_timer_get_time() / 1000 - startTime) < timeoutMs) {
-        if (sensorHandler) sensorHandler->update();
-
-        uint8_t data;
-        int len = uart_read_bytes(UART_NUM_0, &data, 1, 20 / portTICK_PERIOD_MS);
-        if (len > 0) {
-            if (data == '\n' || data == '\r') {
-                if (!input.empty()) {
-                    ESP_LOGI("VOICE", "Secret code entry received: %s", input.c_str());
-                    return input;
-                }
-            } else if (data >= 32 && data <= 126) {
-                input.push_back((char)data);
-                uart_write_bytes(UART_NUM_0, (const char*)&data, 1); // echo back
-            }
-        }
-
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-    }
-
-    ESP_LOGW("VOICE", "Secret code entry timeout");
-    return input;
-}
 
 
