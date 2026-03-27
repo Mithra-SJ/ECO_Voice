@@ -104,6 +104,8 @@ private:
     bool initialized;
     void sendFrame(uint8_t cmd, uint8_t param1, uint8_t param2);
     AudioTrack messageToTrack(const char* message);
+    const char* trackToMessage(AudioTrack track);
+    void logResponse(const char* message);
 };
 
 #endif // AUDIO_HANDLER_H

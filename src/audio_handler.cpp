@@ -21,6 +21,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include <stdio.h>
 #include <string.h>
 
 static const char *TAG = "AUDIO";
@@ -54,10 +55,21 @@ void AudioHandler::sendFrame(uint8_t cmd, uint8_t param1, uint8_t param2) {
 // ---------------------------------------------------------------------------
 AudioHandler::AudioHandler() : initialized(false) {}
 
+void AudioHandler::logResponse(const char* message) {
+    if (!message || !message[0]) return;
+    ESP_LOGI("REPLY", "%s", message);
+    printf("[REPLY] %s\n", message);
+}
+
 // ---------------------------------------------------------------------------
 // init — install UART1, reset DFPlayer, set volume
 // ---------------------------------------------------------------------------
 bool AudioHandler::init() {
+#if !ENABLE_DFPLAYER
+    ESP_LOGI(TAG, "DFPlayer disabled in config. Using Serial Monitor replies only.");
+    initialized = false;
+    return true;
+#else
     ESP_LOGI(TAG, "Initializing DFPlayer Mini on UART1 (TX=%d, RX=%d)...",
              DFPLAYER_TX_PIN, DFPLAYER_RX_PIN);
 
@@ -107,6 +119,7 @@ bool AudioHandler::init() {
     ESP_LOGI(TAG, "DFPlayer initialized. Volume=25.");
     initialized = true;
     return true;
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +127,10 @@ bool AudioHandler::init() {
 // ---------------------------------------------------------------------------
 void AudioHandler::speak(AudioTrack track) {
     if (track == TRACK_NONE) return;
+    logResponse(trackToMessage(track));
+#if !ENABLE_DFPLAYER
+    return;
+#endif
     if (!initialized) {
         ESP_LOGW(TAG, "DFPlayer not ready. Track: %d", (int)track);
         return;
@@ -144,7 +161,8 @@ void AudioHandler::speak(const char* message) {
     if (track != TRACK_NONE) {
         speak(track);
     } else {
-        ESP_LOGW(TAG, "No track mapped for: \"%s\"", message);
+        logResponse(message);
+        ESP_LOGI(TAG, "Serial-only reply for unmapped message.");
     }
 }
 
@@ -195,4 +213,61 @@ AudioTrack AudioHandler::messageToTrack(const char* message) {
         strstr(message, "wait 30"))                  return TRACK_AUTH_LOCKOUT;
 
     return TRACK_NONE;
+}
+
+const char* AudioHandler::trackToMessage(AudioTrack track) {
+    switch (track) {
+        case TRACK_LISTENING_CODE:    return "Listening for secret code.";
+        case TRACK_UNLOCKED:          return "System unlocked.";
+        case TRACK_WRONG_CODE:        return "Wrong code. Try again.";
+        case TRACK_AUTH_TIMEOUT:      return "Time expired. System locked.";
+        case TRACK_LOCKED:            return "System locked successfully.";
+        case TRACK_SYSTEM_LOCKED_MSG: return "System locked.";
+        case TRACK_LISTENING_CMD:     return "Listening for command.";
+        case TRACK_CMD_RECEIVED:      return "Command received.";
+        case TRACK_CMD_UNKNOWN:       return "Sorry, I did not understand. Please repeat.";
+        case TRACK_PROCESSING:        return "Processing command.";
+        case TRACK_LIGHT_TURNING_ON:  return "Light turned on successfully.";
+        case TRACK_LIGHT_TURNING_OFF: return "Turning off the light.";
+        case TRACK_LIGHT_ALREADY_ON:  return "Light is already on.";
+        case TRACK_LIGHT_ALREADY_OFF: return "Light is already off.";
+        case TRACK_BRIGHT:            return "It is already bright. Do you still want to turn on the light?";
+        case TRACK_LIGHT_ON:          return "Light is on.";
+        case TRACK_LIGHT_REMAINS_OFF: return "Light remains off.";
+        case TRACK_FAN_TURNING_ON:    return "Fan turned on successfully.";
+        case TRACK_FAN_TURNING_OFF:   return "Turning off the fan.";
+        case TRACK_FAN_ALREADY_ON:    return "Fan is already on.";
+        case TRACK_FAN_ALREADY_OFF:   return "Fan is already off.";
+        case TRACK_LOW_TEMP_HUM:      return "Temperature or humidity is low.";
+        case TRACK_FAN_ON:            return "Fan is on.";
+        case TRACK_FAN_REMAINS_OFF:   return "Fan remains off.";
+        case TRACK_NO_MOTION:         return "No motion detected.";
+        case TRACK_MOTION_DETECTED:   return "Motion detected.";
+        case TRACK_CURRENT_NORMAL:    return "Current and voltage are normal.";
+        case TRACK_LOW_VOLTAGE:       return "Warning. Low voltage detected.";
+        case TRACK_VOLT_FLUCTUATION:  return "Warning. Voltage fluctuation detected.";
+        case TRACK_OVERCURRENT:       return "Warning. Overcurrent detected.";
+        case TRACK_TEMP_PREFIX:       return "Temperature status updated.";
+        case TRACK_TEMP_SUFFIX:       return "Temperature unit: degrees Celsius.";
+        case TRACK_HUMIDITY_PREFIX:   return "Humidity status updated.";
+        case TRACK_HUMIDITY_SUFFIX:   return "Humidity unit: percent.";
+        case TRACK_STATUS_INTRO:      return "System status.";
+        case TRACK_STATUS_LIGHT_ON:   return "Light is currently on.";
+        case TRACK_STATUS_LIGHT_OFF:  return "Light is currently off.";
+        case TRACK_STATUS_FAN_ON:     return "Fan is currently on.";
+        case TRACK_STATUS_FAN_OFF:    return "Fan is currently off.";
+        case TRACK_STATUS_MOTION_UPD: return "No motion detected.";
+        case TRACK_ASK_YES_NO:        return "Do you still want to continue?";
+        case TRACK_ACTION_CONFIRMED:  return "Action confirmed.";
+        case TRACK_ACTION_CANCELLED:  return "Action cancelled.";
+        case TRACK_SYSTEM_READY:      return "System ready. Say 'hi esp' to wake up.";
+        case TRACK_SLEEP_MODE:        return "System is in sleep mode.";
+        case TRACK_MIC_ACTIVATED:     return "Microphone activated.";
+        case TRACK_GOODBYE:           return "Goodbye.";
+        case TRACK_EDGE_ACTIVE:       return "Edge processing active.";
+        case TRACK_ALL_OK:            return "All systems normal.";
+        case TRACK_AUTH_LOCKOUT:      return "Too many wrong attempts. Please wait 30 seconds.";
+        case TRACK_NONE:
+        default:                      return nullptr;
+    }
 }

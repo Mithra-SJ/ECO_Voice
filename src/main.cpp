@@ -261,22 +261,20 @@ static void reportStatus() {
              lightOn ? "on" : "off",
              fanOn ? "on" : "off");
 
-    audio.speak(TRACK_STATUS_INTRO);
-    audio.speak(motion ? TRACK_MOTION_DETECTED : TRACK_STATUS_MOTION_UPD);
-    audio.speak(lightOn ? TRACK_STATUS_LIGHT_ON  : TRACK_STATUS_LIGHT_OFF);
-    audio.speak(fanOn   ? TRACK_STATUS_FAN_ON    : TRACK_STATUS_FAN_OFF);
+    char statusMessage[256];
+    snprintf(statusMessage, sizeof(statusMessage),
+             "Status report: motion %s, light level %d, temperature %.1f C, humidity %.1f percent, current %.2f A, voltage %.2f V, light %s, fan %s.",
+             motion ? "detected" : "not detected",
+             light, temp, humidity, current, voltage,
+             lightOn ? "on" : "off",
+             fanOn ? "on" : "off");
+    audio.speak(statusMessage);
 
-    // Temperature & humidity status
-    audio.speak(TRACK_TEMP_PREFIX);      // "Temperature is"
-    audio.speak(TRACK_TEMP_SUFFIX);      // "degrees Celsius"
-    audio.speak(TRACK_HUMIDITY_PREFIX);  // "Humidity is"
-    audio.speak(TRACK_HUMIDITY_SUFFIX);  // "percent"
     if (temp < TEMP_LOW_THRESHOLD || humidity < HUMIDITY_LOW_THRESHOLD) {
-        audio.speak(TRACK_LOW_TEMP_HUM); // "Temperature or humidity is low"
+        audio.speak("Temperature or humidity is low.");
     }
 
-    // Voltage status
-    if (sensors.isVoltageLow())              audio.speak(TRACK_LOW_VOLTAGE);
-    else if (sensors.isVoltageFluctuating()) audio.speak(TRACK_VOLT_FLUCTUATION);
-    else                                     audio.speak(TRACK_CURRENT_NORMAL);
+    if (sensors.isVoltageLow())              audio.speak("Warning. Low voltage detected.");
+    else if (sensors.isVoltageFluctuating()) audio.speak("Warning. Voltage fluctuation detected.");
+    else                                     audio.speak("Current and voltage are normal.");
 }

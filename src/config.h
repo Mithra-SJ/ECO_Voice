@@ -39,6 +39,7 @@
 #define DFPLAYER_TX_PIN   16  // ESP32 TX → DFPlayer RX
 #define DFPLAYER_RX_PIN   15  // ESP32 RX ← DFPlayer TX
 #define DFPLAYER_BUSY_PIN 10  // DFPlayer BUSY → ESP32 (LOW=playing, HIGH=idle)
+#define ENABLE_DFPLAYER   0   // 0 = Serial Monitor replies only, 1 = enable DFPlayer output
 
 // ===== AUDIO SETTINGS =====
 #define SAMPLE_RATE       16000

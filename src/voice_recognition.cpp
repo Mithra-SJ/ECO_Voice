@@ -108,7 +108,7 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
     esp_mn_commands_add(2, "fan on");
     esp_mn_commands_add(3, "fan off");
     esp_mn_commands_add(4, "status");
-    esp_mn_commands_add(5, "eco lock");
+    esp_mn_commands_add(5, "lock");
     esp_mn_commands_add(6, "yes");
     esp_mn_commands_add(7, "no");
     esp_mn_commands_add(SECRET_CODE_CMD_ID, SECRET_CODE_PHRASE);  // secret code phrase from secrets.h
