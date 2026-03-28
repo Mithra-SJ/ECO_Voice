@@ -28,8 +28,10 @@ void ApplianceControl::init() {
     gpio_set_level((gpio_num_t)RELAY_LIGHT_PIN, 0);
     gpio_set_level((gpio_num_t)RELAY_FAN_PIN, 0);
 
-    // Set initial LED state
-    setStatusLED(false); // locked = red LED ON
+    // Both LEDs off at startup — system is sleeping, waiting for wake word
+    gpio_set_level((gpio_num_t)LED_GREEN_PIN, 0);
+    gpio_set_level((gpio_num_t)LED_RED_PIN, 0);
+    ESP_LOGI("APPLIANCE", "Status: LOCKED (Red LED)");
 
     ESP_LOGI("APPLIANCE", "Appliance Control Ready");
 }
@@ -73,10 +75,10 @@ void ApplianceControl::setStatusLED(bool unlocked) {
         gpio_set_level((gpio_num_t)LED_RED_PIN, 0);
         ESP_LOGI("APPLIANCE", "Status: UNLOCKED (Green LED)");
     } else {
-        // System locked - Red LED ON, Green LED OFF
+        // System locked/idle — both LEDs OFF (sleeping, waiting for wake word)
         gpio_set_level((gpio_num_t)LED_GREEN_PIN, 0);
-        gpio_set_level((gpio_num_t)LED_RED_PIN, 1);
-        ESP_LOGI("APPLIANCE", "Status: LOCKED (Red LED)");
+        gpio_set_level((gpio_num_t)LED_RED_PIN, 0);
+        ESP_LOGI("APPLIANCE", "Status: LOCKED (LEDs OFF)");
     }
 }
 
