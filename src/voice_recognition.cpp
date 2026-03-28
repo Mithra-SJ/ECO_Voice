@@ -49,10 +49,15 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         return false;
     }
 
+    // Diagnostic: show what models were found and what prefix we're searching for
+    char *any_model = esp_srmodel_filter(models, NULL, NULL);
+    ESP_LOGI("VOICE", "ESP_WN_PREFIX='%s'  first_model='%s'",
+             ESP_WN_PREFIX, any_model ? any_model : "(none — partition empty or unreadable)");
+
     // Get wake-net model
     char *wn_model_name = esp_srmodel_filter(models, ESP_WN_PREFIX, NULL);
     if (!wn_model_name) {
-        ESP_LOGE("VOICE", "No wake-net model found");
+        ESP_LOGE("VOICE", "No wake-net model found matching prefix '%s'", ESP_WN_PREFIX);
         esp_srmodel_deinit(models);
         return false;
     }
