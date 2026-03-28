@@ -47,6 +47,7 @@ private:
     int32_t audioBuffer[480];
     
     void configureI2S();
+    bool readAudioChunk();  // Accumulates exactly 480 32-bit samples then converts to 16-bit PCM in-place
 };
 
 #endif // VOICE_RECOGNITION_H

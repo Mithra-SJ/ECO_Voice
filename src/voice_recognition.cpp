@@ -135,7 +135,7 @@ void VoiceRecognition::configureI2S() {
         .communication_format = I2S_COMM_FORMAT_I2S,
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
         .dma_buf_count = 8,
-        .dma_buf_len = 1024,
+        .dma_buf_len = 240,   // 240 samples × 4 bytes = 960 bytes/buf; 2 bufs fill one 480-sample WakeNet chunk
         .use_apll = false,
         .tx_desc_auto_clear = false,
         .fixed_mclk = 0
@@ -153,20 +153,35 @@ void VoiceRecognition::configureI2S() {
     i2s_zero_dma_buffer(I2S_NUM_0);
 }
 
+bool VoiceRecognition::readAudioChunk() {
+    // Accumulate exactly sizeof(audioBuffer) bytes (1920 bytes = 480 × int32_t).
+    // dma_buf_len=240 means each i2s_read may return only 960 bytes — loop until full.
+    size_t total = 0;
+    uint8_t *buf = (uint8_t *)audioBuffer;
+    const size_t needed = sizeof(audioBuffer);
+    const uint32_t deadline_ms = 300;
+    uint32_t start = esp_timer_get_time() / 1000;
+    while (total < needed) {
+        size_t br = 0;
+        esp_err_t r = i2s_read(I2S_NUM_0, buf + total, needed - total, &br, pdMS_TO_TICKS(50));
+        if (r != ESP_OK) return false;
+        total += br;
+        if ((esp_timer_get_time() / 1000 - start) > deadline_ms) return false;
+    }
+    // Convert 32-bit INMP441 (Philips I2S: 24-bit audio at bits[30:7]) → 16-bit PCM.
+    // Shift >>11 for maximum sensitivity (common in Espressif ESP-SR examples).
+    // Forward iteration is safe: pcm16[i] at byte 2i overwrites within already-read audioBuffer[i/2].
+    int16_t *pcm16 = (int16_t *)audioBuffer;
+    for (int i = 0; i < 480; i++) pcm16[i] = (int16_t)(audioBuffer[i] >> 11);
+    return true;
+}
+
 bool VoiceRecognition::detectWakeWord() {
     if (!initialized || !sr_handle.wn_model) return false;
 
-    // Read audio from I2S
-    size_t bytes_read;
-    esp_err_t ret = i2s_read(I2S_NUM_0, audioBuffer, sizeof(audioBuffer), &bytes_read, 100 / portTICK_PERIOD_MS);
+    if (!readAudioChunk()) return false;
 
-    if (ret != ESP_OK || bytes_read < sizeof(audioBuffer)) return false;
-
-    // Convert 32-bit I2S samples to 16-bit PCM for WakeNet (MSB = audio data)
     int16_t *pcm16 = (int16_t *)audioBuffer;
-    for (int i = 0; i < 480; i++) pcm16[i] = (int16_t)(audioBuffer[i] >> 16);
-
-    // Detect wake word
     int audio_chp = sr_handle.wn_iface->detect(sr_handle.wn_model, pcm16);
     if (audio_chp > 0) {
         ESP_LOGI("VOICE", "Wake word detected!");
@@ -182,12 +197,9 @@ std::string VoiceRecognition::recognizeCommand() {
 
     uint32_t start = esp_timer_get_time() / 1000;
     while ((esp_timer_get_time() / 1000 - start) < COMMAND_TIMEOUT_MS) {
-        size_t bytes_read;
-        esp_err_t ret = i2s_read(I2S_NUM_0, audioBuffer, sizeof(audioBuffer),
-                                 &bytes_read, pdMS_TO_TICKS(100));
-        if (ret == ESP_OK && bytes_read >= sizeof(audioBuffer)) {
+        if (!readAudioChunk()) continue;
+        {
             int16_t *pcm16 = (int16_t *)audioBuffer;
-            for (int i = 0; i < 480; i++) pcm16[i] = (int16_t)(audioBuffer[i] >> 16);
             int command_id = sr_handle.mn_iface->detect(sr_handle.mn_model, pcm16);
             if (command_id >= 0) {
                 switch (command_id) {
@@ -217,21 +229,15 @@ std::string VoiceRecognition::recognizeSecretCode() {
 
     uint32_t start = esp_timer_get_time() / 1000;
     while ((esp_timer_get_time() / 1000 - start) < 3000) {
-        size_t bytes_read;
-        esp_err_t ret = i2s_read(I2S_NUM_0, audioBuffer, sizeof(audioBuffer),
-                                 &bytes_read, pdMS_TO_TICKS(100));
-        if (ret == ESP_OK && bytes_read >= sizeof(audioBuffer)) {
-            int16_t *pcm16 = (int16_t *)audioBuffer;
-            for (int i = 0; i < 480; i++) pcm16[i] = (int16_t)(audioBuffer[i] >> 16);
-            int cmd_id = sr_handle.mn_iface->detect(sr_handle.mn_model, pcm16);
-            if (cmd_id == SECRET_CODE_CMD_ID) {
-                ESP_LOGI("VOICE", "Secret code recognised.");
-                return std::string(SECRET_CODE);
-            } else if (cmd_id >= 0) {
-                // Something was spoken but it was not the secret code
-                ESP_LOGI("VOICE", "Wrong speech input for secret code (cmd_id=%d).", cmd_id);
-                return "WRONG";
-            }
+        if (!readAudioChunk()) continue;
+        int16_t *pcm16 = (int16_t *)audioBuffer;
+        int cmd_id = sr_handle.mn_iface->detect(sr_handle.mn_model, pcm16);
+        if (cmd_id == SECRET_CODE_CMD_ID) {
+            ESP_LOGI("VOICE", "Secret code recognised.");
+            return std::string(SECRET_CODE);
+        } else if (cmd_id >= 0) {
+            ESP_LOGI("VOICE", "Wrong speech input for secret code (cmd_id=%d).", cmd_id);
+            return "WRONG";
         }
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }
@@ -255,16 +261,11 @@ std::string VoiceRecognition::recognizeYesNo() {
 
     uint32_t start = esp_timer_get_time() / 1000;
     while ((esp_timer_get_time() / 1000 - start) < YES_NO_TIMEOUT_MS) {
-        size_t bytes_read;
-        esp_err_t ret = i2s_read(I2S_NUM_0, audioBuffer, sizeof(audioBuffer),
-                                 &bytes_read, pdMS_TO_TICKS(100));
-        if (ret == ESP_OK && bytes_read >= sizeof(audioBuffer)) {
-            int16_t *pcm16 = (int16_t *)audioBuffer;
-            for (int i = 0; i < 480; i++) pcm16[i] = (int16_t)(audioBuffer[i] >> 16);
-            int response = sr_handle.mn_iface->detect(sr_handle.mn_model, pcm16);
-            if (response == 6) return "YES";
-            if (response == 7) return "NO";
-        }
+        if (!readAudioChunk()) continue;
+        int16_t *pcm16 = (int16_t *)audioBuffer;
+        int response = sr_handle.mn_iface->detect(sr_handle.mn_model, pcm16);
+        if (response == 6) return "YES";
+        if (response == 7) return "NO";
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }
     ESP_LOGW("VOICE", "Yes/No timeout — defaulting to NO");
