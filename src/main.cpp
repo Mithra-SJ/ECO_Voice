@@ -61,8 +61,8 @@ extern "C" void app_main(void) {
     ESP_LOGI("MAIN", "Ready. Say 'hi esp' to wake up!\n");
     audio.speak(TRACK_SYSTEM_READY);
 
-    // Create main task
-    xTaskCreate(main_task, "main_task", 8192, NULL, 5, NULL);
+    // Create main task — 32KB stack required for ESP-SR inference + FreeRTOS overhead
+    xTaskCreate(main_task, "main_task", 32768, NULL, 5, NULL);
 }
 
 static void main_task(void *pvParameters) {

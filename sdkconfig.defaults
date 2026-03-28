@@ -8,11 +8,14 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
 
-# Serial console — UART0 only, no secondary USB-JTAG console
-CONFIG_ESP_CONSOLE_UART_DEFAULT=y
-CONFIG_ESP_CONSOLE_UART_NUM=0
-CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
+# Serial console — USB-JTAG (COM8, "USB Serial Device" port on ESP32-S3 DevKitC-1)
+# This routes ESP_LOG output to the native USB port, not UART0 GPIO43/44.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=y
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# app_main stack — must be large enough for ESP-SR model init
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 
 # Wake word: "Hi ESP"  ← say this to wake the device (replaces "ECO")
 CONFIG_SR_WN_WN9_HIESP=y
