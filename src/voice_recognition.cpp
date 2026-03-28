@@ -66,7 +66,7 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
 
     // DET_MODE_2CH_90: correct for single-mic (INMP441 mono-left).
     // DET_MODE_3CH_95 expects 3-channel audio and reads past our buffer — crash risk.
-    sr_handle.wn_model = sr_handle.wn_iface->create(wn_model_name, DET_MODE_2CH_90);
+    sr_handle.wn_model = sr_handle.wn_iface->create(wn_model_name, DET_MODE_90);
     if (!sr_handle.wn_model) {
         ESP_LOGE("VOICE", "Failed to create wake-net model");
         esp_srmodel_deinit(models);
