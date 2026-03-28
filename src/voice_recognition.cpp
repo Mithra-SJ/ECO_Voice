@@ -130,7 +130,7 @@ void VoiceRecognition::configureI2S() {
     i2s_config_t i2s_config = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
         .sample_rate = 16000,
-        .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
         .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
         .communication_format = I2S_COMM_FORMAT_I2S,
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
@@ -160,32 +160,14 @@ bool VoiceRecognition::detectWakeWord() {
     size_t bytes_read;
     esp_err_t ret = i2s_read(I2S_NUM_0, audioBuffer, sizeof(audioBuffer), &bytes_read, 100 / portTICK_PERIOD_MS);
 
-    // Debug: track max amplitude every ~2s to detect mic signal
-    static int dbg_count = 0;
-    static int16_t dbg_max = 0;
-    if (ret == ESP_OK && bytes_read == sizeof(audioBuffer)) {
-        for (int i = 0; i < 480; i++) {
-            int16_t v = audioBuffer[i] < 0 ? -audioBuffer[i] : audioBuffer[i];
-            if (v > dbg_max) dbg_max = v;
-        }
-    }
-    if (++dbg_count >= 200) {
-        dbg_count = 0;
-        ESP_LOGI("I2S_DBG", "ret=%d bytes=%d max_amp=%d", ret, (int)bytes_read, (int)dbg_max);
-        dbg_max = 0;
-    }
+    if (ret != ESP_OK || bytes_read < sizeof(audioBuffer)) return false;
 
-    if (ret != ESP_OK) {
-        ESP_LOGE("VOICE", "I2S read failed: %s", esp_err_to_name(ret));
-        return false;
-    }
-
-    if (bytes_read < sizeof(audioBuffer)) {
-        return false;
-    }
+    // Convert 32-bit I2S samples to 16-bit PCM for WakeNet (MSB = audio data)
+    int16_t *pcm16 = (int16_t *)audioBuffer;
+    for (int i = 0; i < 480; i++) pcm16[i] = (int16_t)(audioBuffer[i] >> 16);
 
     // Detect wake word
-    int audio_chp = sr_handle.wn_iface->detect(sr_handle.wn_model, audioBuffer);
+    int audio_chp = sr_handle.wn_iface->detect(sr_handle.wn_model, pcm16);
     if (audio_chp > 0) {
         ESP_LOGI("VOICE", "Wake word detected!");
         return true;
@@ -204,7 +186,9 @@ std::string VoiceRecognition::recognizeCommand() {
         esp_err_t ret = i2s_read(I2S_NUM_0, audioBuffer, sizeof(audioBuffer),
                                  &bytes_read, pdMS_TO_TICKS(100));
         if (ret == ESP_OK && bytes_read >= sizeof(audioBuffer)) {
-            int command_id = sr_handle.mn_iface->detect(sr_handle.mn_model, audioBuffer);
+            int16_t *pcm16 = (int16_t *)audioBuffer;
+            for (int i = 0; i < 480; i++) pcm16[i] = (int16_t)(audioBuffer[i] >> 16);
+            int command_id = sr_handle.mn_iface->detect(sr_handle.mn_model, pcm16);
             if (command_id >= 0) {
                 switch (command_id) {
                     case 0: return "LIGHT_ON";
@@ -237,7 +221,9 @@ std::string VoiceRecognition::recognizeSecretCode() {
         esp_err_t ret = i2s_read(I2S_NUM_0, audioBuffer, sizeof(audioBuffer),
                                  &bytes_read, pdMS_TO_TICKS(100));
         if (ret == ESP_OK && bytes_read >= sizeof(audioBuffer)) {
-            int cmd_id = sr_handle.mn_iface->detect(sr_handle.mn_model, audioBuffer);
+            int16_t *pcm16 = (int16_t *)audioBuffer;
+            for (int i = 0; i < 480; i++) pcm16[i] = (int16_t)(audioBuffer[i] >> 16);
+            int cmd_id = sr_handle.mn_iface->detect(sr_handle.mn_model, pcm16);
             if (cmd_id == SECRET_CODE_CMD_ID) {
                 ESP_LOGI("VOICE", "Secret code recognised.");
                 return std::string(SECRET_CODE);
@@ -273,7 +259,9 @@ std::string VoiceRecognition::recognizeYesNo() {
         esp_err_t ret = i2s_read(I2S_NUM_0, audioBuffer, sizeof(audioBuffer),
                                  &bytes_read, pdMS_TO_TICKS(100));
         if (ret == ESP_OK && bytes_read >= sizeof(audioBuffer)) {
-            int response = sr_handle.mn_iface->detect(sr_handle.mn_model, audioBuffer);
+            int16_t *pcm16 = (int16_t *)audioBuffer;
+            for (int i = 0; i < 480; i++) pcm16[i] = (int16_t)(audioBuffer[i] >> 16);
+            int response = sr_handle.mn_iface->detect(sr_handle.mn_model, pcm16);
             if (response == 6) return "YES";
             if (response == 7) return "NO";
         }

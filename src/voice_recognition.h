@@ -42,8 +42,9 @@ private:
     SensorHandler* sensorHandler;
     sr_handle_t sr_handle;
 
-    // Audio buffer — WakeNet9/MultiNet7 chunk: 480 samples @ 16kHz (30ms)
-    int16_t audioBuffer[480];
+    // Audio buffer — 32-bit I2S (INMP441 needs BCLK>=1MHz, requires 32-bit frames)
+    // WakeNet9 chunk: 480 samples @ 16kHz (30ms). Stored as int32_t, converted to int16_t before detect().
+    int32_t audioBuffer[480];
     
     void configureI2S();
 };
