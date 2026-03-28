@@ -17,6 +17,14 @@ CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 # app_main stack — must be large enough for ESP-SR model init
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 
+# PSRAM — required for ESP-SR WakeNet/MultiNet model allocation (~3MB+)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_BOOT_INIT=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+
 # Wake word: "Hi ESP"  ← say this to wake the device (replaces "ECO")
 CONFIG_SR_WN_WN9_HIESP=y
 
