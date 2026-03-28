@@ -172,7 +172,20 @@ bool VoiceRecognition::readAudioChunk() {
     // Shift >>11 for maximum sensitivity (common in Espressif ESP-SR examples).
     // Forward iteration is safe: pcm16[i] at byte 2i overwrites within already-read audioBuffer[i/2].
     int16_t *pcm16 = (int16_t *)audioBuffer;
-    for (int i = 0; i < 480; i++) pcm16[i] = (int16_t)(audioBuffer[i] >> 11);
+    int32_t max_amp = 0;
+    for (int i = 0; i < 480; i++) {
+        int32_t raw = audioBuffer[i];
+        int32_t abs_val = raw < 0 ? -raw : raw;
+        if (abs_val > max_amp) max_amp = abs_val;
+        pcm16[i] = (int16_t)(raw >> 11);
+    }
+
+    // Print amplitude every ~100 chunks (~3s) so we can confirm mic is alive
+    static int dbg_count = 0;
+    if (++dbg_count >= 100) {
+        dbg_count = 0;
+        ESP_LOGI("MIC_DBG", "max_amp_raw=%ld  (should be >100000 when speaking)", (long)max_amp);
+    }
     return true;
 }
 
