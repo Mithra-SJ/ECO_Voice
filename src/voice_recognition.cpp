@@ -159,7 +159,16 @@ bool VoiceRecognition::detectWakeWord() {
     // Read audio from I2S
     size_t bytes_read;
     esp_err_t ret = i2s_read(I2S_NUM_0, audioBuffer, sizeof(audioBuffer), &bytes_read, 100 / portTICK_PERIOD_MS);
-    
+
+    // Debug: print every 200th call (~2s) to avoid flooding
+    static int dbg_count = 0;
+    if (++dbg_count >= 200) {
+        dbg_count = 0;
+        ESP_LOGI("I2S_DBG", "ret=%d bytes_read=%d expected=%d s[0]=%d s[1]=%d s[2]=%d",
+                 ret, (int)bytes_read, (int)sizeof(audioBuffer),
+                 (int)audioBuffer[0], (int)audioBuffer[1], (int)audioBuffer[2]);
+    }
+
     if (ret != ESP_OK) {
         ESP_LOGE("VOICE", "I2S read failed: %s", esp_err_to_name(ret));
         return false;
