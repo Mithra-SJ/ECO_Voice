@@ -42,8 +42,8 @@ private:
     SensorHandler* sensorHandler;
     sr_handle_t sr_handle;
 
-    // Audio buffer
-    int16_t audioBuffer[16000]; // 1 second at 16kHz
+    // Audio buffer — WakeNet9/MultiNet7 chunk: 480 samples @ 16kHz (30ms)
+    int16_t audioBuffer[480];
     
     void configureI2S();
 };
