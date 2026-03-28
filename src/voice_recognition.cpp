@@ -38,10 +38,11 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
     ESP_LOGI("VOICE", "Initializing ESP-SR Voice Recognition...");
     sensorHandler = sensors;
 
-    // Configure I2S for INMP441 microphone
-    configureI2S();
-
-    // Load model file list
+    // Load models FIRST — esp_srmodel_init needs internal DMA-capable RAM to mount the model
+    // partition (FAT). With I2S installed first (dma_buf_len=240, 8 bufs = 15KB of 32KB pool),
+    // there is insufficient DMA RAM left and esp_srmodel_filter returns NULL.
+    // Models are loaded into PSRAM; after esp_srmodel_deinit() the temporary DMA RAM is freed.
+    // I2S is configured last so it gets a full pool to allocate from.
     srmodel_list_t *models = esp_srmodel_init("model");
     if (!models) {
         ESP_LOGE("VOICE", "Failed to load model file list");
@@ -96,7 +97,10 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         return false;
     }
 
-    esp_srmodel_deinit(models);
+    esp_srmodel_deinit(models);  // Releases temporary DMA-capable RAM used during model scan
+
+    // Configure I2S now — DMA pool is free after esp_srmodel_deinit
+    configureI2S();
 
     // Register speech commands with MultiNet
     // Command IDs must match the switch-case in recognizeCommand() and SECRET_CODE_CMD_ID in config.h

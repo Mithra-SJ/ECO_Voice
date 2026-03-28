@@ -31,7 +31,7 @@ void ApplianceControl::init() {
     // Both LEDs off at startup — system is sleeping, waiting for wake word
     gpio_set_level((gpio_num_t)LED_GREEN_PIN, 0);
     gpio_set_level((gpio_num_t)LED_RED_PIN, 0);
-    ESP_LOGI("APPLIANCE", "Status: LOCKED (Red LED)");
+    ESP_LOGI("APPLIANCE", "Status: IDLE (LEDs OFF — waiting for wake word)");
 
     ESP_LOGI("APPLIANCE", "Appliance Control Ready");
 }
