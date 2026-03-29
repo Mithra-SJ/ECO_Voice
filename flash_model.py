@@ -33,8 +33,12 @@ def flash_model_partition(source, target, env):
     port = env.get("UPLOAD_PORT", "COM8")
     print(f"\n[flash_model] Flashing {MODEL_BIN} → offset {MODEL_OFFSET} on {port} ...")
 
+    # Use PlatformIO's bundled esptool — avoids dependency on system Python esptool
+    pio_esptool = os.path.join(
+        os.path.expanduser("~"), ".platformio", "packages", "tool-esptoolpy", "esptool.py"
+    )
     esptool_args = [
-        sys.executable, "-m", "esptool",
+        sys.executable, pio_esptool,
         "--chip", "esp32s3",
         "--port", port,
         "--baud", "460800",
