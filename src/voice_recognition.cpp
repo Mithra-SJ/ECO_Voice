@@ -87,7 +87,7 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         return false;
     }
 
-    // Initialize multi-net
+    // Initialize multi-net iface
     sr_handle.mn_iface = esp_mn_handle_from_name(mn_model_name);
     if (!sr_handle.mn_iface) {
         ESP_LOGE("VOICE", "Failed to get multi-net interface");
@@ -95,6 +95,31 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         return false;
     }
 
+    // Register commands BEFORE create() — mn6 builds the FST command table during create().
+    // Passing NULL for the model is valid at this stage; the iface only needs the handle.
+    // Command IDs must match the switch-case in recognizeCommand() and SECRET_CODE_CMD_ID in config.h
+    esp_err_t cmds_err = esp_mn_commands_alloc(sr_handle.mn_iface, NULL);
+    if (cmds_err != ESP_OK) {
+        ESP_LOGE("VOICE", "esp_mn_commands_alloc failed — cannot register commands.");
+        esp_srmodel_deinit(models);
+        return false;
+    }
+    esp_mn_commands_add(0, "light on");
+    esp_mn_commands_add(1, "light off");
+    esp_mn_commands_add(2, "fan on");
+    esp_mn_commands_add(3, "fan off");
+    esp_mn_commands_add(4, "status");
+    esp_mn_commands_add(5, "lock");
+    esp_mn_commands_add(6, "yes");
+    esp_mn_commands_add(7, "no");
+    esp_mn_commands_add(SECRET_CODE_CMD_ID, SECRET_CODE_PHRASE);
+    esp_mn_error_t *mn_err = esp_mn_commands_update();
+    if (mn_err && mn_err->num > 0) {
+        ESP_LOGW("VOICE", "MultiNet: %d command phrase(s) failed to register.", mn_err->num);
+    }
+    ESP_LOGI("VOICE", "MultiNet commands registered (secret code phrase: \"%s\").", SECRET_CODE_PHRASE);
+
+    // Create MultiNet model — FST is built from the commands registered above
     sr_handle.mn_model = sr_handle.mn_iface->create(mn_model_name, 6000);
     if (!sr_handle.mn_model) {
         ESP_LOGE("VOICE", "Failed to create multi-net model");
@@ -106,28 +131,6 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
 
     // Configure I2S now — DMA pool is free after esp_srmodel_deinit
     configureI2S();
-
-    // Register speech commands with MultiNet
-    // Command IDs must match the switch-case in recognizeCommand() and SECRET_CODE_CMD_ID in config.h
-    esp_err_t cmds_err = esp_mn_commands_alloc(sr_handle.mn_iface, sr_handle.mn_model);
-    if (cmds_err != ESP_OK) {
-        ESP_LOGE("VOICE", "esp_mn_commands_alloc failed — cannot register commands.");
-        return false;
-    }
-    esp_mn_commands_add(0, "light on");
-    esp_mn_commands_add(1, "light off");
-    esp_mn_commands_add(2, "fan on");
-    esp_mn_commands_add(3, "fan off");
-    esp_mn_commands_add(4, "status");
-    esp_mn_commands_add(5, "lock");
-    esp_mn_commands_add(6, "yes");
-    esp_mn_commands_add(7, "no");
-    esp_mn_commands_add(SECRET_CODE_CMD_ID, SECRET_CODE_PHRASE);  // secret code phrase from secrets.h
-    esp_mn_error_t *mn_err = esp_mn_commands_update();
-    if (mn_err && mn_err->num > 0) {
-        ESP_LOGW("VOICE", "MultiNet: %d command phrase(s) failed to register.", mn_err->num);
-    }
-    ESP_LOGI("VOICE", "MultiNet commands registered (secret code phrase: \"%s\").", SECRET_CODE_PHRASE);
 
     ESP_LOGI("VOICE", "ESP-SR initialized successfully.");
     initialized = true;
