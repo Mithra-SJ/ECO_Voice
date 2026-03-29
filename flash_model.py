@@ -10,16 +10,17 @@ Import("env")
 
 MODEL_TARGET_DIR = "managed_components/espressif__esp-sr/model/target"
 PACK_SCRIPT     = "managed_components/espressif__esp-sr/model/pack_model.py"
-MODEL_BIN       = "srmodels.bin"
+# pack_model.py writes output inside MODEL_TARGET_DIR, not cwd
+MODEL_BIN       = os.path.join(MODEL_TARGET_DIR, "srmodels.bin")
 MODEL_OFFSET    = "0x310000"
 
 
 def flash_model_partition(source, target, env):
-    # Step 1 — pack model files into srmodels.bin
+    # Step 1 — pack model files into srmodels.bin (written inside MODEL_TARGET_DIR)
     if not os.path.exists(MODEL_BIN):
         print("\n[flash_model] Packing ESP-SR models into srmodels.bin ...")
         result = subprocess.run(
-            [sys.executable, PACK_SCRIPT, MODEL_TARGET_DIR, MODEL_BIN],
+            [sys.executable, PACK_SCRIPT, "-m", MODEL_TARGET_DIR, "-o", "srmodels.bin"],
             check=False
         )
         if result.returncode != 0:
@@ -38,7 +39,7 @@ def flash_model_partition(source, target, env):
         "--port", port,
         "--baud", "460800",
         "write_flash",
-        MODEL_OFFSET, MODEL_BIN,
+        MODEL_OFFSET, MODEL_BIN,  # MODEL_BIN is the full relative path
     ]
     result = subprocess.run(esptool_args, check=False)
     if result.returncode == 0:
