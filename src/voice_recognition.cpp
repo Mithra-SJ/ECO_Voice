@@ -95,15 +95,21 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         return false;
     }
 
-    // Register commands BEFORE create() — mn6 builds the FST command table during create().
-    // Passing NULL for the model is valid at this stage; the iface only needs the handle.
-    // Command IDs must match the switch-case in recognizeCommand() and SECRET_CODE_CMD_ID in config.h
-    esp_err_t cmds_err = esp_mn_commands_alloc(sr_handle.mn_iface, NULL);
-    if (cmds_err != ESP_OK) {
-        ESP_LOGE("VOICE", "esp_mn_commands_alloc failed — cannot register commands.");
+    // Phase 1: bare alloc (no model yet) — this initialises the internal command list so
+    // that create() can call esp_mn_commands_clear() without hitting a null-pointer crash.
+    esp_mn_commands_alloc(sr_handle.mn_iface, NULL);
+
+    // Create MultiNet model — command system is now initialised, so create() won't crash.
+    sr_handle.mn_model = sr_handle.mn_iface->create(mn_model_name, 6000);
+    if (!sr_handle.mn_model) {
+        ESP_LOGE("VOICE", "Failed to create multi-net model");
         esp_srmodel_deinit(models);
         return false;
     }
+
+    // Phase 2: re-alloc with the real model handle so update() can push commands into it.
+    // Command IDs must match the switch-case in recognizeCommand() and SECRET_CODE_CMD_ID.
+    esp_mn_commands_alloc(sr_handle.mn_iface, sr_handle.mn_model);
     esp_mn_commands_add(0, "light on");
     esp_mn_commands_add(1, "light off");
     esp_mn_commands_add(2, "fan on");
@@ -118,14 +124,6 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         ESP_LOGW("VOICE", "MultiNet: %d command phrase(s) failed to register.", mn_err->num);
     }
     ESP_LOGI("VOICE", "MultiNet commands registered (secret code phrase: \"%s\").", SECRET_CODE_PHRASE);
-
-    // Create MultiNet model — FST is built from the commands registered above
-    sr_handle.mn_model = sr_handle.mn_iface->create(mn_model_name, 6000);
-    if (!sr_handle.mn_model) {
-        ESP_LOGE("VOICE", "Failed to create multi-net model");
-        esp_srmodel_deinit(models);
-        return false;
-    }
 
     esp_srmodel_deinit(models);  // Releases temporary DMA-capable RAM used during model scan
 
