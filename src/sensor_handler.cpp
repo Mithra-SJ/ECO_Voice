@@ -114,13 +114,14 @@ bool SensorHandler::init() {
         return false;
     }
 
-    // Configure INA219 — write calibration then config registers
+    // Configure INA219 — write calibration then config registers (non-fatal)
     if (ina219_write_reg(INA219_REG_CALIBRATION, INA219_CALIBRATION_VALUE) != ESP_OK ||
         ina219_write_reg(INA219_REG_CONFIG,      INA219_CONFIG_VALUE)      != ESP_OK) {
-        ESP_LOGE("SENSOR", "INA219 init failed. Check SDA=%d SCL=%d wiring.", INA219_SDA, INA219_SCL);
-        return false;
+        ESP_LOGW("SENSOR", "INA219 init failed (addr=0x%02X). Check SDA=%d SCL=%d wiring. Current/voltage readings disabled.", INA219_ADDR, INA219_SDA, INA219_SCL);
+        // Non-fatal — system continues without current sensor
+    } else {
+        ESP_LOGI("SENSOR", "INA219 initialized (addr=0x%02X).", INA219_ADDR);
     }
-    ESP_LOGI("SENSOR", "INA219 initialized (addr=0x%02X).", INA219_ADDR);
 
     ESP_LOGI("SENSOR", "All sensors initialized successfully.");
     return true;

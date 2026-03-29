@@ -43,9 +43,10 @@ static void main_task(void *pvParameters);
 extern "C" void app_main(void) {
     ESP_LOGI("MAIN", "=== ECO Voice System Starting ===\n");
 
-    // Initialize Components — warn on sensor failure (non-fatal: voice still works)
+    // Initialize Components — halt on sensor failure, warn on audio failure
     if (!sensors.init()) {
-        ESP_LOGW("MAIN", "Sensor init failed. Check INA219 wiring. Continuing without sensors.");
+        ESP_LOGE("MAIN", "Sensor init failed. Check INA219 wiring.");
+        while (1) { vTaskDelay(1000 / portTICK_PERIOD_MS); }  // halt
     }
     appliances.init();
     if (!audio.init()) {
