@@ -95,11 +95,8 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         return false;
     }
 
-    // Phase 1: bare alloc (no model yet) — this initialises the internal command list so
-    // that create() can call esp_mn_commands_clear() without hitting a null-pointer crash.
-    esp_mn_commands_alloc(sr_handle.mn_iface, NULL);
-
-    // Create MultiNet model — command system is now initialised, so create() won't crash.
+    // Create MultiNet model — mn6 will find commands_en.txt + fst files from its model data.
+    // (fst/ files must be packed inside mn6_en_ctc/ in srmodels.bin — see DEV_WORKFLOW.md)
     sr_handle.mn_model = sr_handle.mn_iface->create(mn_model_name, 6000);
     if (!sr_handle.mn_model) {
         ESP_LOGE("VOICE", "Failed to create multi-net model");
@@ -107,7 +104,7 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         return false;
     }
 
-    // Phase 2: re-alloc with the real model handle so update() can push commands into it.
+    // Alloc commands with the real model, then register our custom phrases.
     // Command IDs must match the switch-case in recognizeCommand() and SECRET_CODE_CMD_ID.
     esp_mn_commands_alloc(sr_handle.mn_iface, sr_handle.mn_model);
     esp_mn_commands_add(0, "light on");
