@@ -229,6 +229,10 @@ std::string VoiceRecognition::recognizeCommand() {
                     case 3: return "FAN_OFF";
                     case 4: return "STATUS";
                     case 5: return "LOCK";
+                    case 6:  // "yes" — ignore in command mode
+                    case 7:  // "no"  — ignore in command mode
+                    case SECRET_CODE_CMD_ID:  // secret code — ignore in command mode
+                        break;
                 }
             }
         }
@@ -255,6 +259,9 @@ std::string VoiceRecognition::recognizeSecretCode() {
         if (cmd_id == SECRET_CODE_CMD_ID) {
             ESP_LOGI("VOICE", "Secret code recognised.");
             return std::string(SECRET_CODE);
+        } else if (cmd_id == 6 || cmd_id == 7) {
+            // "yes"/"no" detected — ignore, don't burn an auth attempt
+            ESP_LOGI("VOICE", "Ignored yes/no during secret code listening (cmd_id=%d).", cmd_id);
         } else if (cmd_id >= 0) {
             ESP_LOGI("VOICE", "Wrong speech input for secret code (cmd_id=%d).", cmd_id);
             return "WRONG";
@@ -271,7 +278,7 @@ bool VoiceRecognition::verifySecretCode(const std::string& code) {
     std::string secret = std::string(SECRET_CODE);
     std::transform(secret.begin(), secret.end(), secret.begin(), ::tolower);
     
-    return (input == secret || input.find(secret) != std::string::npos);
+    return (input == secret);
 }
 
 std::string VoiceRecognition::recognizeYesNo() {

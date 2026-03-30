@@ -151,28 +151,42 @@ void SensorHandler::readPIR() {
 void SensorHandler::readLDR() {
     // Read analog value from LDR — GPIO 8 = ADC1_CHANNEL_7 on ESP32-S3
     int raw = adc1_get_raw(ADC1_CHANNEL_7);
-    lightLevel = raw;
 
-    // Optional: Apply smoothing filter
+    // Smoothing filter — average of last 10 readings
     static int readings[10];
     static int index = 0;
     static long total = 0;
+    static bool filled = false;
+
+    // On first call, fill the entire buffer with the current reading to avoid
+    // averaging with zeros during the first 10 ticks
+    if (!filled) {
+        for (int i = 0; i < 10; i++) readings[i] = raw;
+        total = (long)raw * 10;
+        filled = true;
+    }
 
     total -= readings[index];
-    readings[index] = lightLevel;
-    total += readings[index];
+    readings[index] = raw;
+    total += raw;
     index = (index + 1) % 10;
 
-    lightLevel = total / 10; // Average of last 10 readings
+    lightLevel = total / 10;
 }
 
 void SensorHandler::readDHT11() {
+    // DHT11 needs minimum ~1s between reads; hammering it causes timeout errors
+    static uint32_t lastDhtRead = 0;
+    uint32_t now = esp_timer_get_time() / 1000;
+    if (lastDhtRead != 0 && (now - lastDhtRead) < DHT11_READ_INTERVAL_MS) return;
+    lastDhtRead = now;
+
     struct dht11_reading reading = DHT11_read();
     if (reading.status == DHT11_OK) {
         temperature = reading.temperature;
         humidity = reading.humidity;
     } else {
-        ESP_LOGE("DHT11", "Failed to read DHT11 sensor, status: %d", reading.status);
+        ESP_LOGW("DHT11", "DHT11 read failed (status: %d), keeping previous values.", reading.status);
     }
 }
 
@@ -241,4 +255,8 @@ bool SensorHandler::isVoltageLow() {
 
 bool SensorHandler::isVoltageFluctuating() {
     return voltageInitialized && (voltageDelta > VOLTAGE_FLUCTUATION_THRESHOLD);
+}
+
+bool SensorHandler::isOvercurrent() {
+    return (current_mA / 1000.0f) > OVERCURRENT_THRESHOLD;
 }

@@ -49,15 +49,16 @@
 // ===== THRESHOLDS =====
 #define BRIGHTNESS_THRESHOLD          600   // ADC value (0-4095), higher = brighter
 #define MOTION_TIMEOUT_MS             5000  // Motion detection persistence
-#define WAKE_THRESHOLD                500   // Energy threshold for voice activity detection
 
 // DHT11 — Fan control gate
 #define TEMP_LOW_THRESHOLD            22.0  // °C  — below this, fan not recommended
 #define HUMIDITY_LOW_THRESHOLD        40.0  // %RH — below this, fan not recommended
+#define DHT11_READ_INTERVAL_MS        2000  // Minimum ms between DHT11 reads
 
 // INA219 — Voltage monitoring (informational notifications) — tuned for 5V load
 #define LOW_VOLTAGE_THRESHOLD         4.5f  // Volts — below this, warn user (90% of 5V)
 #define VOLTAGE_FLUCTUATION_THRESHOLD 0.3f  // Volts delta between readings — warn user
+#define OVERCURRENT_THRESHOLD         3.0f  // Amps — above this, block appliance and warn user
 
 // ===== AUTHENTICATION =====
 #define AUTH_TIMEOUT_MS         30000 // 30 seconds per attempt window
@@ -67,7 +68,6 @@
 // ===== VOICE RECOGNITION SETTINGS =====
 #define SECRET_CODE_CMD_ID      8     // MultiNet command ID reserved for secret code phrase
 #define WAKE_WORD               "hi esp"
-#define WAKE_CONFIDENCE         0.7   // Confidence threshold (0.0 - 1.0)
 #define COMMAND_TIMEOUT_MS      5000  // Time to wait for command after wake
 #define YES_NO_TIMEOUT_MS       10000 // Time to wait for yes/no response
 

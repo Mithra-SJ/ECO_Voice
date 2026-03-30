@@ -34,9 +34,10 @@ public:
     float getVoltage();           // Volts
     float getPower();             // Watts
 
-    // Voltage status (INA219 monitoring)
+    // INA219 monitoring
     bool isVoltageLow();          // true if below LOW_VOLTAGE_THRESHOLD
     bool isVoltageFluctuating();  // true if delta between readings exceeds threshold
+    bool isOvercurrent();         // true if current exceeds OVERCURRENT_THRESHOLD
 
 private:
     // DHT dht;
@@ -53,7 +54,7 @@ private:
     float voltageDelta;
     bool voltageInitialized;
 
-    unsigned long lastMotionTime;
+    uint32_t lastMotionTime;
     void readPIR();
     void readLDR();
     void readDHT11();
