@@ -50,22 +50,47 @@ static void sensor_task(void *pvParameters) {
 }
 
 static void serial_task(void *pvParameters) {
-    char input[128];
+    std::string input;
+    input.reserve(128);
 
     while (1) {
-        if (fgets(input, sizeof(input), stdin) == NULL) {
+        int ch = fgetc(stdin);
+        if (ch == EOF) {
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
 
-        std::string command = normalizeCommand(input);
-        if (command.empty()) {
+        if (ch == '\r') {
+            continue;
+        }
+
+        if (ch == '\n') {
+            std::string command = normalizeCommand(input.c_str());
+            input.clear();
+
+            if (command.empty()) {
+                printPrompt();
+                continue;
+            }
+
+            processCommand(command);
             printPrompt();
             continue;
         }
 
-        processCommand(command);
-        printPrompt();
+        if (ch == '\b' || ch == 127) {
+            if (!input.empty()) {
+                input.pop_back();
+            }
+            continue;
+        }
+
+        if (ch >= 32 && ch <= 126) {
+            if (input.size() < 127) {
+                input.push_back(static_cast<char>(ch));
+            }
+            continue;
+        }
     }
 }
 

@@ -42,6 +42,7 @@ private:
     // DHT dht;
 
     bool motionDetected;
+    bool ina219Available;
     int lightLevel;
     float temperature;
     float humidity;
