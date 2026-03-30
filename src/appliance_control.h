@@ -25,6 +25,9 @@ public:
     // LED Status Indicators
     void setStatusLED(bool unlocked);  // true = green (unlocked), false = red (locked)
     void blinkStatusLED(bool green, int times);
+    void printOutputLevels();
+    void runOutputDiagnostic();
+    void runPinDiagnostic(int pin);
 
 private:
     bool lightState;

@@ -32,12 +32,12 @@
 ### Pin Configuration:
 ```
 GPIO Assignments:
-- GPIO 42: Status LED (Green) - appliance active indicator
-- GPIO 41: Error LED (Red) - system error indicator
-- GPIO 40: Relay 1 (Light)
-- GPIO 39: Relay 2 (Fan)
-- GPIO 4: PIR Motion Sensor
-- GPIO 5: LDR Analog Input
+- GPIO 14: Status LED (Green) - system unlocked indicator
+- GPIO 13: Status LED (Red) - system locked indicator
+- GPIO 17: Relay 1 (Light)
+- GPIO 18: Relay 2 (Fan)
+- GPIO 7: PIR Motion Sensor
+- GPIO 8: LDR Analog Input
 
 I2S Microphone (INMP441):
 - GPIO 9: I2S Clock (SCK)
@@ -65,12 +65,12 @@ I2C Bus (INA219):
 #include "esp_adc_cal.h"
 
 // GPIO Pins
-#define GREEN_LED_PIN           GPIO_NUM_42
-#define RED_LED_PIN             GPIO_NUM_41
-#define RELAY_LIGHT_PIN         GPIO_NUM_40
-#define RELAY_FAN_PIN           GPIO_NUM_39
-#define PIR_SENSOR_PIN          GPIO_NUM_4
-#define LDR_ADC_PIN             GPIO_NUM_5
+#define GREEN_LED_PIN           GPIO_NUM_14
+#define RED_LED_PIN             GPIO_NUM_13
+#define RELAY_LIGHT_PIN         GPIO_NUM_17
+#define RELAY_FAN_PIN           GPIO_NUM_18
+#define PIR_SENSOR_PIN          GPIO_NUM_7
+#define LDR_ADC_PIN             GPIO_NUM_8
 
 // I2S Configuration
 #define I2S_NUM                 I2S_NUM_0

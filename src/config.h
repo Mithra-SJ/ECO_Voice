@@ -30,6 +30,7 @@
 // Relay Module
 #define RELAY_LIGHT_PIN   17
 #define RELAY_FAN_PIN     18
+#define RELAY_ACTIVE_LOW  1
 
 // Status LEDs
 #define LED_GREEN_PIN     14  // System unlocked

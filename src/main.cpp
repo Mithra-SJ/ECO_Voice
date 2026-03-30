@@ -2,6 +2,7 @@
 #include <string>
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -145,6 +146,28 @@ static void processCommand(const std::string& command) {
         return;
     }
 
+    if (command == "gpio status") {
+        appliances.printOutputLevels();
+        return;
+    }
+
+    if (command == "gpio test") {
+        appliances.runOutputDiagnostic();
+        return;
+    }
+
+    if (command.rfind("pin test ", 0) == 0) {
+        const std::string pinText = command.substr(9);
+        char *end = nullptr;
+        long pin = std::strtol(pinText.c_str(), &end, 10);
+        if (end == pinText.c_str() || *end != '\0') {
+            printf("Invalid pin number: %s\n", pinText.c_str());
+            return;
+        }
+        appliances.runPinDiagnostic(static_cast<int>(pin));
+        return;
+    }
+
     printf("Unknown command: %s\n", command.c_str());
     printf("Type 'help' to see available commands.\n");
 }
@@ -203,6 +226,9 @@ static void printHelp() {
     printf("  all off      - Turn off light and fan\n");
     printf("  led locked   - Show locked state on status LEDs\n");
     printf("  led unlocked - Show unlocked state on status LEDs\n\n");
+    printf("  gpio status  - Print output GPIO levels\n");
+    printf("  gpio test    - Toggle each output pin directly\n\n");
+    printf("  pin test N   - Toggle a specific GPIO directly\n\n");
 }
 
 static void printPrompt() {
