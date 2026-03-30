@@ -23,6 +23,7 @@
 #include "esp_timer.h"
 #include <stdio.h>
 #include <string.h>
+#include "serial_monitor.h"
 
 static const char *TAG = "AUDIO";
 #define DFPLAYER_UART_NUM  UART_NUM_1
@@ -57,8 +58,7 @@ AudioHandler::AudioHandler() : initialized(false) {}
 
 void AudioHandler::logResponse(const char* message) {
     if (!message || !message[0]) return;
-    ESP_LOGI("REPLY", "%s", message);
-    printf("[REPLY] %s\n", message);
+    SERIAL_STEP("REPLY", "%s", message);
 }
 
 // ---------------------------------------------------------------------------
@@ -66,12 +66,12 @@ void AudioHandler::logResponse(const char* message) {
 // ---------------------------------------------------------------------------
 bool AudioHandler::init() {
 #if !ENABLE_DFPLAYER
-    ESP_LOGI(TAG, "DFPlayer disabled in config. Using Serial Monitor replies only.");
+    SERIAL_STEP(TAG, "DFPlayer disabled in config. Using Serial Monitor replies only");
     initialized = false;
     return true;
 #else
-    ESP_LOGI(TAG, "Initializing DFPlayer Mini on UART1 (TX=%d, RX=%d)...",
-             DFPLAYER_TX_PIN, DFPLAYER_RX_PIN);
+    SERIAL_STEP(TAG, "Initializing DFPlayer Mini on UART1 (TX=%d, RX=%d)",
+                DFPLAYER_TX_PIN, DFPLAYER_RX_PIN);
 
     uart_config_t uart_cfg = {
         .baud_rate  = 9600,
@@ -85,19 +85,19 @@ bool AudioHandler::init() {
     esp_err_t err;
     err = uart_driver_install(DFPLAYER_UART_NUM, 256, 0, 0, NULL, 0);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "UART install failed: %s", esp_err_to_name(err));
+        SERIAL_ERROR(TAG, "UART install failed: %s", esp_err_to_name(err));
         return false;
     }
     err = uart_param_config(DFPLAYER_UART_NUM, &uart_cfg);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "UART config failed: %s", esp_err_to_name(err));
+        SERIAL_ERROR(TAG, "UART config failed: %s", esp_err_to_name(err));
         return false;
     }
     err = uart_set_pin(DFPLAYER_UART_NUM,
                        DFPLAYER_TX_PIN, DFPLAYER_RX_PIN,
                        UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "UART set pin failed: %s", esp_err_to_name(err));
+        SERIAL_ERROR(TAG, "UART set pin failed: %s", esp_err_to_name(err));
         return false;
     }
 
@@ -116,7 +116,7 @@ bool AudioHandler::init() {
     sendFrame(0x06, 0x00, 25);              // Set volume to 25 (max 30)
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
-    ESP_LOGI(TAG, "DFPlayer initialized. Volume=25.");
+    SERIAL_STEP(TAG, "DFPlayer initialized. Volume=25");
     initialized = true;
     return true;
 #endif
@@ -132,10 +132,10 @@ void AudioHandler::speak(AudioTrack track) {
     return;
 #endif
     if (!initialized) {
-        ESP_LOGW(TAG, "DFPlayer not ready. Track: %d", (int)track);
+        SERIAL_WARN(TAG, "DFPlayer not ready. Track=%d", (int)track);
         return;
     }
-    ESP_LOGI(TAG, "Playing track %d", (int)track);
+    SERIAL_STEP(TAG, "Playing DFPlayer track %d", (int)track);
     sendFrame(0x03, 0x00, (uint8_t)track);  // CMD 0x03: play track N
     vTaskDelay(300 / portTICK_PERIOD_MS);   // allow DFPlayer to begin
 
@@ -162,7 +162,7 @@ void AudioHandler::speak(const char* message) {
         speak(track);
     } else {
         logResponse(message);
-        ESP_LOGI(TAG, "Serial-only reply for unmapped message.");
+        SERIAL_STEP(TAG, "Serial-only reply for unmapped message");
     }
 }
 

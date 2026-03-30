@@ -14,6 +14,7 @@
 #include "esp_timer.h"
 #include "sensor_handler.h"
 #include "config.h"
+#include "serial_monitor.h"
 
 // DHT11 library for ESP-IDF
 #include "dht11.h"
@@ -84,18 +85,21 @@ SensorHandler::SensorHandler() :
 }
 
 bool SensorHandler::init() {
-    ESP_LOGI("SENSOR", "Initializing Sensors...");
+    SERIAL_STEP("SENSOR", "Initializing sensors");
 
     // Configure PIR sensor pin
     gpio_set_direction((gpio_num_t)PIR_PIN, GPIO_MODE_INPUT);
+    SERIAL_STEP("SENSOR", "PIR configured on GPIO %d", PIR_PIN);
 
     // Configure ADC for LDR
     // LDR_PIN = GPIO 8 → ADC1_CHANNEL_7 on ESP32-S3
     adc1_config_width(ADC_WIDTH_BIT_12);
     adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_12);
+    SERIAL_STEP("SENSOR", "LDR configured on ADC1 channel 7 / GPIO %d", LDR_PIN);
 
     // Initialize DHT11
     DHT11_init((gpio_num_t)DHT11_PIN);
+    SERIAL_STEP("SENSOR", "DHT11 configured on GPIO %d", DHT11_PIN);
 
     // Initialize I2C bus for INA219 (SDA=INA219_SDA, SCL=INA219_SCL)
     i2c_config_t i2c_cfg = {
@@ -110,20 +114,22 @@ bool SensorHandler::init() {
     i2c_param_config(I2C_NUM_0, &i2c_cfg);
     esp_err_t i2c_err = i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
     if (i2c_err != ESP_OK) {
-        ESP_LOGE("SENSOR", "I2C init failed: %s", esp_err_to_name(i2c_err));
+        SERIAL_ERROR("SENSOR", "I2C init failed: %s", esp_err_to_name(i2c_err));
         return false;
     }
+    SERIAL_STEP("SENSOR", "INA219 I2C configured | SDA=%d SCL=%d", INA219_SDA, INA219_SCL);
 
     // Configure INA219 — write calibration then config registers (non-fatal)
     if (ina219_write_reg(INA219_REG_CALIBRATION, INA219_CALIBRATION_VALUE) != ESP_OK ||
         ina219_write_reg(INA219_REG_CONFIG,      INA219_CONFIG_VALUE)      != ESP_OK) {
-        ESP_LOGW("SENSOR", "INA219 init failed (addr=0x%02X). Check SDA=%d SCL=%d wiring. Current/voltage readings disabled.", INA219_ADDR, INA219_SDA, INA219_SCL);
+        SERIAL_WARN("SENSOR", "INA219 init failed (addr=0x%02X). Check SDA=%d SCL=%d wiring. Current/voltage readings disabled.",
+                    INA219_ADDR, INA219_SDA, INA219_SCL);
         // Non-fatal — system continues without current sensor
     } else {
-        ESP_LOGI("SENSOR", "INA219 initialized (addr=0x%02X).", INA219_ADDR);
+        SERIAL_STEP("SENSOR", "INA219 initialized at address 0x%02X", INA219_ADDR);
     }
 
-    ESP_LOGI("SENSOR", "All sensors initialized successfully.");
+    SERIAL_STEP("SENSOR", "All sensors initialized successfully");
     return true;
 }
 
@@ -186,7 +192,7 @@ void SensorHandler::readDHT11() {
         temperature = reading.temperature;
         humidity = reading.humidity;
     } else {
-        ESP_LOGW("DHT11", "DHT11 read failed (status: %d), keeping previous values.", reading.status);
+        SERIAL_WARN("DHT11", "Failed to read DHT11 sensor, status=%d", reading.status);
     }
 }
 
@@ -202,7 +208,7 @@ void SensorHandler::readCurrentSensor() {
         loadVoltage        = newVoltage;
         busVoltage         = newVoltage;
     } else {
-        ESP_LOGW("SENSOR", "INA219 bus voltage read failed.");
+        SERIAL_WARN("SENSOR", "INA219 bus voltage read failed");
     }
 
     // --- Shunt Voltage (register 0x01) — 10 µV/LSB ---
