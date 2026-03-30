@@ -3,6 +3,7 @@
 
 set(app_sources 
     main.cpp
+    audio_handler.cpp
     sensor_handler.cpp
     appliance_control.cpp
 )

@@ -9,9 +9,11 @@
 #include "config.h"
 #include "sensor_handler.h"
 #include "appliance_control.h"
+#include "audio_handler.h"
 
 static SensorHandler sensors;
 static ApplianceControl appliances;
+static AudioHandler audio;
 
 static void sensor_task(void *pvParameters);
 static void serial_task(void *pvParameters);
@@ -21,7 +23,10 @@ static void printStatus();
 static void processCommand(const std::string& command);
 static std::string normalizeCommand(const char *input);
 static void handleLightOn();
+static void handleLightOff();
 static void handleFanOn();
+static void handleFanOff();
+static void handleAllOff();
 
 extern "C" void app_main(void) {
     ESP_LOGI("MAIN", "=== ECO Serial Monitor Starting ===");
@@ -34,8 +39,12 @@ extern "C" void app_main(void) {
     }
 
     appliances.init();
+    if (!audio.init()) {
+        ESP_LOGW("MAIN", "DFPlayer init failed. Audio prompts are disabled.");
+    }
 
     printf("\nECO Serial Monitor Ready\n");
+    audio.speak(TRACK_SYSTEM_READY);
     printHelp();
     printPrompt();
 
@@ -112,8 +121,7 @@ static void processCommand(const std::string& command) {
     }
 
     if (command == "light off") {
-        appliances.setLight(false);
-        printf("Light turned OFF.\n");
+        handleLightOff();
         return;
     }
 
@@ -123,14 +131,12 @@ static void processCommand(const std::string& command) {
     }
 
     if (command == "fan off") {
-        appliances.setFan(false);
-        printf("Fan turned OFF.\n");
+        handleFanOff();
         return;
     }
 
     if (command == "all off") {
-        appliances.turnOffAll();
-        printf("All appliances turned OFF.\n");
+        handleAllOff();
         return;
     }
 
@@ -191,6 +197,13 @@ static void handleLightOn() {
 
     appliances.setLight(true);
     printf("Light turned ON.\n");
+    audio.speak(TRACK_LIGHT_ON);
+}
+
+static void handleLightOff() {
+    appliances.setLight(false);
+    printf("Light turned OFF.\n");
+    audio.speak(TRACK_LIGHT_TURNING_OFF);
 }
 
 static void handleFanOn() {
@@ -213,6 +226,20 @@ static void handleFanOn() {
 
     appliances.setFan(true);
     printf("Fan turned ON.\n");
+    audio.speak(TRACK_FAN_ON);
+}
+
+static void handleFanOff() {
+    appliances.setFan(false);
+    printf("Fan turned OFF.\n");
+    audio.speak(TRACK_FAN_TURNING_OFF);
+}
+
+static void handleAllOff() {
+    appliances.turnOffAll();
+    printf("All appliances turned OFF.\n");
+    audio.speak(TRACK_LIGHT_TURNING_OFF);
+    audio.speak(TRACK_FAN_TURNING_OFF);
 }
 
 static void printHelp() {
