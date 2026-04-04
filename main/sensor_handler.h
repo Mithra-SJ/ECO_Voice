@@ -43,6 +43,7 @@ private:
 
     bool motionDetected;
     bool ina219Available;
+    bool dht11Available;
     int lightLevel;
     float temperature;
     float humidity;
@@ -53,6 +54,9 @@ private:
     float power_mW;
     float voltageDelta;
     bool voltageInitialized;
+    int dht11FailureCount;
+    int64_t lastDht11ReadMs;
+    int64_t lastDht11LogMs;
 
     unsigned long lastMotionTime;
     void readPIR();

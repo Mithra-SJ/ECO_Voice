@@ -21,10 +21,12 @@ public:
     // Status Query
     bool isLightOn();
     bool isFanOn();
+    bool isUnlocked() const;
 
     // LED Status Indicators
     void setStatusLED(bool unlocked);  // true = green (unlocked), false = red (locked)
     void blinkStatusLED(bool green, int times);
+    void setActivityLED(bool on);
     void printOutputLevels();
     void runOutputDiagnostic();
     void runPinDiagnostic(int pin);

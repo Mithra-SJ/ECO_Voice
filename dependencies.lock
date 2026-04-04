@@ -1,10 +1,31 @@
 dependencies:
+  esp-sr:
+    dependencies: []
+    source:
+      path: D:\ECO_Voice\components\esp-sr
+      type: local
+    version: 2.4.0
+  espressif/dl_fft:
+    dependencies: []
+    source:
+      path: D:\ECO_Voice\components\espressif__dl_fft
+      type: local
+    version: 0.3.1
+  espressif/esp-dsp:
+    dependencies: []
+    source:
+      path: D:\ECO_Voice\components\espressif__esp-dsp
+      type: local
+    version: 1.7.0
   idf:
     source:
       type: idf
     version: 5.5.0
 direct_dependencies:
+- espressif/dl_fft
+- espressif/esp-dsp
+- espressif/esp-sr
 - idf
-manifest_hash: 402c0bc2e018169893b2a6df5d4a33091e652e5b484451f15a4b9f64b7ea51c6
+manifest_hash: 261dc5a567663e7a7caf4093c7b1abcba82bed0b6ceb3e7b3dc0ff863d25f08a
 target: esp32s3
 version: 2.0.0

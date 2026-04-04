@@ -1,32 +1,52 @@
 #include <stdio.h>
 #include <string>
+#include <deque>
+#include <cstdint>
 #include <algorithm>
 #include <cctype>
-#include <cstdlib>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "config.h"
 #include "sensor_handler.h"
 #include "appliance_control.h"
 #include "audio_handler.h"
+#include "voice_recognition.h"
+#include "secrets.h"
 
 static SensorHandler sensors;
 static ApplianceControl appliances;
 static AudioHandler audio;
+static VoiceRecognition microphone;
+
+struct MicLogEntry {
+    int64_t timestampMs;
+    std::string phrase;
+};
+
+static std::deque<MicLogEntry> micLog;
+static portMUX_TYPE micLogMux = portMUX_INITIALIZER_UNLOCKED;
+static constexpr int64_t MIC_LOG_RETENTION_MS = 2 * 60 * 1000;
+static volatile bool liveMicLogEnabled = false;
 
 static void sensor_task(void *pvParameters);
 static void serial_task(void *pvParameters);
+static void microphone_task(void *pvParameters);
 static void printHelp();
 static void printPrompt();
 static void printStatus();
 static void processCommand(const std::string& command);
-static std::string normalizeCommand(const char *input);
 static void handleLightOn();
 static void handleLightOff();
 static void handleFanOn();
 static void handleFanOff();
 static void handleAllOff();
+static std::string normalizeCommand(const char *input);
+static void addMicLogEntry(const MicLogEntry& entry);
+static void printMicLogHistory();
+static void setLiveMicLog(bool enabled);
+static bool tryUnlockWithSecret(const std::string& command);
 
 extern "C" void app_main(void) {
     ESP_LOGI("MAIN", "=== ECO Serial Monitor Starting ===");
@@ -39,17 +59,27 @@ extern "C" void app_main(void) {
     }
 
     appliances.init();
-    if (!audio.init()) {
+    appliances.setActivityLED(false);
+
+    const bool audioReady = audio.init();
+    if (!audioReady) {
         ESP_LOGW("MAIN", "DFPlayer init failed. Audio prompts are disabled.");
     }
 
+    if (!microphone.init(nullptr)) {
+        ESP_LOGE("MAIN", "Microphone init failed.");
+    }
+
     printf("\nECO Serial Monitor Ready\n");
-    audio.speak(TRACK_SYSTEM_READY);
     printHelp();
+    if (audioReady) {
+        audio.speak(TRACK_SYSTEM_READY);
+    }
     printPrompt();
 
     xTaskCreate(sensor_task, "sensor_task", 4096, NULL, 5, NULL);
     xTaskCreate(serial_task, "serial_task", 6144, NULL, 5, NULL);
+    xTaskCreate(microphone_task, "microphone_task", 4096, NULL, 5, NULL);
 }
 
 static void sensor_task(void *pvParameters) {
@@ -140,15 +170,14 @@ static void processCommand(const std::string& command) {
         return;
     }
 
-    if (command == "led locked") {
-        appliances.setStatusLED(false);
-        printf("Status LED set to LOCKED.\n");
-        return;
-    }
-
-    if (command == "led unlocked") {
-        appliances.setStatusLED(true);
-        printf("Status LED set to UNLOCKED.\n");
+    if (command == "led locked" || command == "lock" || command == "lock system") {
+        if (!appliances.isUnlocked()) {
+            printf("System already locked. Red LED is off.\n");
+        } else {
+            appliances.setStatusLED(false);
+            audio.speak(TRACK_LOCKED);
+            printf("System locked. Red LED is off.\n");
+        }
         return;
     }
 
@@ -162,6 +191,21 @@ static void processCommand(const std::string& command) {
         return;
     }
 
+    if (command == "see mic activity") {
+        printMicLogHistory();
+        return;
+    }
+
+    if (command == "mic log" || command == "mic log on") {
+        setLiveMicLog(true);
+        return;
+    }
+
+    if (command == "mic log off" || command == "stop mic log") {
+        setLiveMicLog(false);
+        return;
+    }
+
     if (command.rfind("pin test ", 0) == 0) {
         const std::string pinText = command.substr(9);
         char *end = nullptr;
@@ -171,6 +215,10 @@ static void processCommand(const std::string& command) {
             return;
         }
         appliances.runPinDiagnostic(static_cast<int>(pin));
+        return;
+    }
+
+    if (tryUnlockWithSecret(command)) {
         return;
     }
 
@@ -251,10 +299,13 @@ static void printHelp() {
     printf("  fan on       - Turn the fan relay on\n");
     printf("  fan off      - Turn the fan relay off\n");
     printf("  all off      - Turn off light and fan\n");
-    printf("  led locked   - Show locked state on status LEDs\n");
-    printf("  led unlocked - Show unlocked state on status LEDs\n\n");
+    printf("  lock (or led locked) - Force system lock (red LED off)\n");
+    printf("  <secret code>        - Enter your SECRET_CODE to unlock (red LED on)\n");
+    printf("  see mic activity - Print the last two minutes of recognized speech history\n");
+    printf("  mic log          - Start live predefined-word recognition in the serial monitor\n");
+    printf("  mic log off      - Stop live word recognition\n\n");
     printf("  gpio status  - Print output GPIO levels\n");
-    printf("  gpio test    - Toggle each output pin directly\n\n");
+    printf("  gpio test    - Toggle each output pin directly\n");
     printf("  pin test N   - Toggle a specific GPIO directly\n\n");
 }
 
@@ -275,7 +326,8 @@ static void printStatus() {
     printf("  Light relay : %s\n", appliances.isLightOn() ? "ON" : "OFF");
     printf("  Fan relay   : %s\n", appliances.isFanOn() ? "ON" : "OFF");
     printf("  Voltage low : %s\n", sensors.isVoltageLow() ? "YES" : "NO");
-    printf("  Voltage var : %s\n\n", sensors.isVoltageFluctuating() ? "YES" : "NO");
+    printf("  Voltage var : %s\n", sensors.isVoltageFluctuating() ? "YES" : "NO");
+    printf("  System lock : %s\n\n", appliances.isUnlocked() ? "UNLOCKED" : "LOCKED");
 }
 
 static std::string normalizeCommand(const char *input) {
@@ -296,4 +348,111 @@ static std::string normalizeCommand(const char *input) {
         [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
     return command;
+}
+
+static void addMicLogEntry(const MicLogEntry& entry) {
+    portENTER_CRITICAL(&micLogMux);
+    micLog.push_back(entry);
+    const int64_t cutoff = entry.timestampMs - MIC_LOG_RETENTION_MS;
+    while (!micLog.empty() && micLog.front().timestampMs < cutoff) {
+        micLog.pop_front();
+    }
+    portEXIT_CRITICAL(&micLogMux);
+}
+
+static void printMicLogHistory() {
+    int64_t nowMs = esp_timer_get_time() / 1000;
+    std::deque<MicLogEntry> snapshot;
+    portENTER_CRITICAL(&micLogMux);
+    snapshot = micLog;
+    portEXIT_CRITICAL(&micLogMux);
+
+    if (snapshot.empty()) {
+        printf("\nMic log is empty.\n");
+        return;
+    }
+
+    printf("\nMic log (last 2 minutes):\n");
+    for (const auto &entry : snapshot) {
+        int64_t age = nowMs - entry.timestampMs;
+        if (age < 0) age = 0;
+        printf("  %5lldms ago heard: %s\n", (long long)age, entry.phrase.c_str());
+    }
+}
+
+static void setLiveMicLog(bool enabled) {
+    liveMicLogEnabled = enabled;
+    if (enabled) {
+        if (!microphone.isReady()) {
+            printf("ESP-SR is not ready. Check model flashing and PSRAM configuration.\n");
+            liveMicLogEnabled = false;
+            return;
+        }
+        printf("Live mic log enabled. Speak one of the predefined words or phrases.\n");
+        printf("Type 'mic log off' to stop live recognition.\n");
+    } else {
+        printf("Live mic log disabled.\n");
+    }
+}
+
+static bool tryUnlockWithSecret(const std::string& command) {
+    static const std::string normalizedSecret = [] {
+        std::string code = SECRET_CODE;
+        std::transform(code.begin(), code.end(), code.begin(),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return code;
+    }();
+
+    if (command != normalizedSecret) {
+        return false;
+    }
+
+    if (appliances.isUnlocked()) {
+        printf("System already unlocked.\n");
+    } else {
+        appliances.setStatusLED(true);
+        audio.speak(TRACK_UNLOCKED);
+        printf("Secret code accepted. System unlocked (red LED on).\n");
+    }
+    return true;
+}
+
+static void microphone_task(void *pvParameters) {
+    bool speechWasActive = false;
+    int64_t lastSpeechReportMs = 0;
+
+    while (1) {
+        if (!liveMicLogEnabled) {
+            appliances.setActivityLED(false);
+            speechWasActive = false;
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+
+        std::string phrase = microphone.pollRecognizedPhrase();
+        const bool speechActive = microphone.detectSound();
+        const int64_t nowMs = esp_timer_get_time() / 1000;
+
+        appliances.setActivityLED(speechActive);
+
+        if (!phrase.empty()) {
+            printf("Heard: %s\n", phrase.c_str());
+            speechWasActive = true;
+            lastSpeechReportMs = nowMs;
+
+            MicLogEntry entry;
+            entry.timestampMs = esp_timer_get_time() / 1000;
+            entry.phrase = phrase;
+            addMicLogEntry(entry);
+        } else if (speechActive && (!speechWasActive || (nowMs - lastSpeechReportMs) >= 1000)) {
+            printf("Speech detected. level=%d p2p=%d\n",
+                   microphone.getLastLevel(), microphone.getPeakToPeak());
+            speechWasActive = true;
+            lastSpeechReportMs = nowMs;
+        } else if (!speechActive) {
+            speechWasActive = false;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
 }

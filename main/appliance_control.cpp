@@ -76,21 +76,10 @@ void ApplianceControl::updateRelay(int pin, bool state) {
 
 void ApplianceControl::setStatusLED(bool unlocked) {
     unlockedState = unlocked;
-    if (unlocked) {
-        // System unlocked - Green LED ON, Red LED OFF
-        gpio_set_level((gpio_num_t)LED_GREEN_PIN, 1);
-        gpio_set_level((gpio_num_t)LED_RED_PIN, 0);
-        ESP_LOGI("APPLIANCE", "Status: UNLOCKED (GPIO%d=%d GPIO%d=%d)",
-                 LED_GREEN_PIN, gpio_get_level((gpio_num_t)LED_GREEN_PIN),
-                 LED_RED_PIN, gpio_get_level((gpio_num_t)LED_RED_PIN));
-    } else {
-        // System locked - Red LED ON, Green LED OFF
-        gpio_set_level((gpio_num_t)LED_GREEN_PIN, 0);
-        gpio_set_level((gpio_num_t)LED_RED_PIN, 1);
-        ESP_LOGI("APPLIANCE", "Status: LOCKED (GPIO%d=%d GPIO%d=%d)",
-                 LED_GREEN_PIN, gpio_get_level((gpio_num_t)LED_GREEN_PIN),
-                 LED_RED_PIN, gpio_get_level((gpio_num_t)LED_RED_PIN));
-    }
+    gpio_set_level((gpio_num_t)LED_RED_PIN, unlocked ? 1 : 0);
+    ESP_LOGI("APPLIANCE", "Status: %s (GPIO%d=%d)",
+             unlocked ? "UNLOCKED" : "LOCKED",
+             LED_RED_PIN, gpio_get_level((gpio_num_t)LED_RED_PIN));
 }
 
 void ApplianceControl::blinkStatusLED(bool green, int times) {
@@ -105,6 +94,13 @@ void ApplianceControl::blinkStatusLED(bool green, int times) {
 
     // Restore LED to the correct lock/unlock state
     setStatusLED(unlockedState);
+}
+
+void ApplianceControl::setActivityLED(bool on) {
+    gpio_set_level((gpio_num_t)LED_GREEN_PIN, on ? 1 : 0);
+    if (!on) {
+        gpio_set_level((gpio_num_t)LED_RED_PIN, unlockedState ? 1 : 0);
+    }
 }
 
 void ApplianceControl::printOutputLevels() {
@@ -175,4 +171,8 @@ void ApplianceControl::runPinDiagnostic(int pin) {
     printf("  level after LOW  = %d\n", gpio_get_level(gpioPin));
 
     printf("GPIO%d test complete.\n", pin);
+}
+
+bool ApplianceControl::isUnlocked() const {
+    return unlockedState;
 }

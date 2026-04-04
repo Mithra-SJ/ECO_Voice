@@ -108,6 +108,7 @@ static bool scan_for_ina219_addr(uint8_t *found_addr) {
 SensorHandler::SensorHandler() :
     motionDetected(false),
     ina219Available(false),
+    dht11Available(true),
     lightLevel(0),
     temperature(0),
     humidity(0),
@@ -118,6 +119,9 @@ SensorHandler::SensorHandler() :
     power_mW(0),
     voltageDelta(0),
     voltageInitialized(false),
+    dht11FailureCount(0),
+    lastDht11ReadMs(0),
+    lastDht11LogMs(0),
     lastMotionTime(0) {
 }
 
@@ -218,12 +222,41 @@ void SensorHandler::readLDR() {
 }
 
 void SensorHandler::readDHT11() {
+    constexpr int kDht11ReadIntervalMs = 2000;
+    constexpr int kDht11LogIntervalMs = 10000;
+    constexpr int kDht11DisableAfterFailures = 5;
+
+    int64_t nowMs = esp_timer_get_time() / 1000;
+    if ((nowMs - lastDht11ReadMs) < kDht11ReadIntervalMs) {
+        return;
+    }
+    lastDht11ReadMs = nowMs;
+
     struct dht11_reading reading = DHT11_read();
     if (reading.status == DHT11_OK) {
         temperature = reading.temperature;
         humidity = reading.humidity;
+        dht11FailureCount = 0;
+        dht11Available = true;
     } else {
-        ESP_LOGE("DHT11", "Failed to read DHT11 sensor, status: %d", reading.status);
+        ++dht11FailureCount;
+
+        if (!dht11Available) {
+            return;
+        }
+
+        if (dht11FailureCount >= kDht11DisableAfterFailures) {
+            dht11Available = false;
+            ESP_LOGW("DHT11", "DHT11 read failed %d times. Disabling further DHT11 logs until reboot.",
+                     dht11FailureCount);
+            return;
+        }
+
+        if ((nowMs - lastDht11LogMs) >= kDht11LogIntervalMs) {
+            lastDht11LogMs = nowMs;
+            ESP_LOGW("DHT11", "DHT11 read failed, status=%d (attempt %d/%d).",
+                     reading.status, dht11FailureCount, kDht11DisableAfterFailures);
+        }
     }
 }
 

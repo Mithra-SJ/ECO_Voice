@@ -1,6 +1,7 @@
-# ECO_Voice Partition Table — ESP32-S3 8MB Flash
-# Name,   Type, SubType,  Offset,   Size,     Flags
-nvs,      data, nvs,      0x9000,   0x5000,
-otadata,  data, ota,      0xe000,   0x2000,
-app0,     app,  ota_0,    0x10000,  0x300000,
-model,    data, spiffs,   0x310000, 0x4C0000,
+# ECO_Voice Partition Table - ESP32-S3 16MB Flash with ESP-SR model storage
+# Name,     Type,  SubType,  Offset,    Size
+nvs,        data,  nvs,      0x9000,    0x5000,
+phy_init,   data,  phy,      0xF000,    0x1000,
+factory,    app,   factory,  0x10000,   0x400000,
+model,      data,  spiffs,   0x410000,  0x400000,
+storage,    data,  spiffs,   0x810000,  0x7F0000,

@@ -44,12 +44,21 @@
 // ===== AUDIO SETTINGS =====
 #define SAMPLE_RATE       16000
 #define BITS_PER_SAMPLE   I2S_BITS_PER_SAMPLE_32BIT
-#define I2S_CHANNEL       I2S_CHANNEL_FMT_ONLY_LEFT
+#define I2S_CHANNEL       I2S_CHANNEL_FMT_RIGHT_LEFT
+#define MIC_TARGET_PEAK   12000
+#define MIC_MAX_GAIN      16
 
 // ===== THRESHOLDS =====
 #define BRIGHTNESS_THRESHOLD          600   // ADC value (0-4095), higher = brighter
 #define MOTION_TIMEOUT_MS             5000  // Motion detection persistence
-#define WAKE_THRESHOLD                500   // Energy threshold for voice activity detection
+#define WAKE_THRESHOLD                500   // Legacy threshold retained for compatibility
+#define SOUND_ACTIVITY_THRESHOLD      20  // Average decoded mic amplitude considered "sound"
+#define SOUND_ACTIVITY_MARGIN         1   // Margin above learned idle noise floor
+#define SOUND_MIN_PEAK_TO_PEAK        400  // Reject nearly flat or stuck input frames
+#define SOUND_CONSECUTIVE_FRAMES      4     // Require several valid frames before blinking
+#define SOUND_RELEASE_FRAMES          8     // Require several quiet frames before clearing sound
+#define SOUND_CALIBRATION_FRAMES      40    // Startup frames used to learn the idle noise floor
+#define SOUND_LOG_INTERVAL_MS         1000  // Interval for buffered mic diagnostics history
 
 // DHT11 — Fan control gate
 #define TEMP_LOW_THRESHOLD            22.0  // °C  — below this, fan not recommended

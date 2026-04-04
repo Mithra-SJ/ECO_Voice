@@ -1,12 +1,18 @@
 # ECO_Voice — ESP-IDF SDK defaults
 
+# sdkconfig.defaults — place in project ROOT
+CONFIG_ESP32S3_SPIRAM_SUPPORT=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
 # Partition table (REQUIRED for esp-sr model auto-flash)
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
-# Flash size: 8MB
-CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
-CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
+# Flash size: 16MB
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
 
 # Wake word: "Hi ESP"  ← say this to wake the device (replaces "ECO")
 CONFIG_SR_WN_WN9_HIESP=y
