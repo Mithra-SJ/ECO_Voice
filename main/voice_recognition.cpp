@@ -31,12 +31,12 @@ struct SpeechCommand {
 constexpr SpeechCommand kSpeechCommands[] = {
     {1, "hi esp"},
     {2, "hello"},
-    {3, "light on"},
-    {4, "light off"},
-    {5, "fan on"},
-    {6, "fan off"},
-    {7, "status"},
-    {8, "lock"},
+    {3, "turn on the light"},
+    {4, "turn off the light"},
+    {5, "turn on the fan"},
+    {6, "turn off the fan"},
+    {7, "show status"},
+    {8, "lock the system"},
     {9, "yes"},
     {10, "no"},
 };
