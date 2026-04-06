@@ -90,6 +90,49 @@ const char *lookupCommandText(int commandId) {
     return "";
 }
 
+bool isKnownRecognizedPhrase(const std::string &phrase) {
+    if (phrase.empty()) {
+        return false;
+    }
+
+    for (const auto &command : kSpeechCommands) {
+        if (phrase == normalizePhrase(command.phrase)) {
+            return true;
+        }
+    }
+
+    return phrase == normalizePhrase(SECRET_CODE_PHRASE);
+}
+
+std::string extractRecognizedPhrase(const esp_mn_results_t *result) {
+    if (result == nullptr || result->num <= 0) {
+        return "";
+    }
+
+    std::string phrase = normalizePhrase(result->string);
+    if (!phrase.empty()) {
+        return phrase;
+    }
+
+    phrase = normalizePhrase(result->raw_string);
+    if (!phrase.empty()) {
+        return phrase;
+    }
+
+    if (result->command_id[0] > 0) {
+        phrase = normalizePhrase(lookupCommandText(result->command_id[0]));
+        if (!phrase.empty()) {
+            return phrase;
+        }
+    }
+
+    if (result->phrase_id[0] > 0) {
+        phrase = normalizePhrase(lookupCommandText(result->phrase_id[0]));
+    }
+
+    return phrase;
+}
+
 int16_t convertInmp441SampleToS16(int32_t rawSample) {
     // INMP441 provides signed 24-bit samples left-justified in a 32-bit slot.
     int32_t sample24 = rawSample >> 8;
@@ -331,12 +374,28 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     esp_mn_state_t state = multinet->detect(modelData, commandBuffer);
     if (state == ESP_MN_STATE_DETECTED) {
         esp_mn_results_t *result = multinet->get_results(modelData);
-        std::string phrase;
+        std::string phrase = extractRecognizedPhrase(result);
+        const float probability = (result != nullptr && result->num > 0) ? result->prob[0] : 0.0f;
 
-        if (result != nullptr && result->num > 0) {
-            if (result->command_id[0] > 0) {
-                phrase = normalizePhrase(lookupCommandText(result->command_id[0]));
-            }
+        if (result != nullptr && (!isKnownRecognizedPhrase(phrase) || probability < VOICE_MIN_RESULT_PROB)) {
+            ESP_LOGI(TAG,
+                     "Rejected recognition. prob=%.3f phrase='%s' command_id=%d phrase_id=%d raw='%s'",
+                     probability,
+                     phrase.c_str(),
+                     result->command_id[0],
+                     result->phrase_id[0],
+                     result->raw_string);
+            phrase.clear();
+        }
+
+        if (phrase.empty() && result != nullptr && probability >= VOICE_MIN_RESULT_PROB) {
+            ESP_LOGW(TAG,
+                     "Detected speech but no printable known phrase. num=%d command_id=%d phrase_id=%d string='%s' raw='%s'",
+                     result->num,
+                     result->command_id[0],
+                     result->phrase_id[0],
+                     result->string,
+                     result->raw_string);
         }
 
         multinet->clean(modelData);
