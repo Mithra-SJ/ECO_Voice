@@ -44,7 +44,7 @@
 // ===== AUDIO SETTINGS =====
 #define SAMPLE_RATE       16000
 #define BITS_PER_SAMPLE   I2S_BITS_PER_SAMPLE_32BIT
-#define I2S_CHANNEL       I2S_CHANNEL_FMT_ONLY_LEFT  // INMP441 L/R=GND → left channel only
+#define I2S_CHANNEL       I2S_CHANNEL_FMT_RIGHT_LEFT
 #define MIC_TARGET_PEAK   12000
 #define MIC_MAX_GAIN      16
 #define VOICE_MIN_RESULT_PROB        0.60f
