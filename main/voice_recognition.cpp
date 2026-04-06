@@ -309,40 +309,26 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         return "";
     }
 
-    const size_t channelCount = 2;
-    const size_t targetBytes = static_cast<size_t>(audioChunkSamples) * channelCount * sizeof(int32_t);
+    // INMP441 L/R=GND → mono left channel only; rawAudioBuffer sized for mono 32-bit
+    const size_t targetBytes = static_cast<size_t>(audioChunkSamples) * sizeof(int32_t);
     size_t bytesRead = 0;
     esp_err_t err = i2s_read(I2S_PORT, rawAudioBuffer, targetBytes, &bytesRead, pdMS_TO_TICKS(120));
     if (err != ESP_OK || bytesRead < targetBytes) {
         return "";
     }
 
-    int64_t leftEnergy = 0;
-    int64_t rightEnergy = 0;
-    for (int i = 0; i < audioChunkSamples; ++i) {
-        const int32_t leftRaw = rawAudioBuffer[i * 2];
-        const int32_t rightRaw = rawAudioBuffer[i * 2 + 1];
-        const int16_t leftSample = convertInmp441SampleToS16(leftRaw);
-        const int16_t rightSample = convertInmp441SampleToS16(rightRaw);
-        leftEnergy += std::abs(static_cast<int>(leftSample));
-        rightEnergy += std::abs(static_cast<int>(rightSample));
-    }
-
-    const bool useRightChannel = rightEnergy > leftEnergy;
     int sampleMin = std::numeric_limits<int16_t>::max();
     int sampleMax = std::numeric_limits<int16_t>::min();
     int64_t sampleSum = 0;
     int peakAbs = 1;
     for (int i = 0; i < audioChunkSamples; ++i) {
-        const int32_t rawSample = rawAudioBuffer[i * 2 + (useRightChannel ? 1 : 0)];
-        const int16_t sample = convertInmp441SampleToS16(rawSample);
+        const int16_t sample = convertInmp441SampleToS16(rawAudioBuffer[i]);
         peakAbs = std::max(peakAbs, std::abs(static_cast<int>(sample)));
     }
 
     const int gain = std::max(1, std::min(MIC_MAX_GAIN, MIC_TARGET_PEAK / peakAbs));
     for (int i = 0; i < audioChunkSamples; ++i) {
-        const int32_t rawSample = rawAudioBuffer[i * 2 + (useRightChannel ? 1 : 0)];
-        int sample = static_cast<int>(convertInmp441SampleToS16(rawSample)) * gain;
+        int sample = static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i])) * gain;
         sample = std::max(static_cast<int>(std::numeric_limits<int16_t>::min()),
                           std::min(static_cast<int>(std::numeric_limits<int16_t>::max()), sample));
         commandBuffer[i] = static_cast<int16_t>(sample);
