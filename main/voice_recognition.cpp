@@ -326,24 +326,19 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         return "";
     }
 
-    // Auto-select whichever slot carries real mic energy.
-    // Even with L/R pinned to GND, ESP32 DMA slot ordering can vary —
-    // comparing both ensures we always pick the channel with actual signal.
-    int64_t leftEnergy = 0;
-    int64_t rightEnergy = 0;
-    for (int i = 0; i < audioChunkSamples; ++i) {
-        const int16_t ls = convertInmp441SampleToS16(rawAudioBuffer[i * 2]);
-        const int16_t rs = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1]);
-        leftEnergy  += std::abs(static_cast<int>(ls));
-        rightEnergy += std::abs(static_cast<int>(rs));
-    }
-    const bool useRightChannel = rightEnergy > leftEnergy;
+    // INMP441 L/R=GND → data confirmed in ESP32 DMA right slot (index i*2+1).
+    // Fixed selection prevents frame-by-frame channel switching that corrupts
+    // the continuous audio stream fed to MultiNet.
+    const bool useRightChannel = true;
 
-    // Diagnostic: show channel energies every second
+    // Diagnostic: show right-channel energy snapshot every ~1s
     if (diagCount == 0) {
-        printf("[CH] leftEnergy=%lld rightEnergy=%lld using=%s\n",
-               (long long)leftEnergy, (long long)rightEnergy,
-               useRightChannel ? "RIGHT" : "LEFT");
+        int64_t rightEnergy = 0;
+        for (int i = 0; i < audioChunkSamples; ++i) {
+            const int16_t rs = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1]);
+            rightEnergy += std::abs(static_cast<int>(rs));
+        }
+        printf("[CH] rightEnergy=%lld (RIGHT fixed)\n", (long long)rightEnergy);
     }
 
     int sampleMin = std::numeric_limits<int16_t>::max();
