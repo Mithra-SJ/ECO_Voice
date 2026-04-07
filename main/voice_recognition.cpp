@@ -373,8 +373,8 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
                result ? result->command_id[0] : -1,
                result ? result->phrase_id[0] : -1,
                probability,
-               (result && result->string) ? result->string : "",
-               (result && result->raw_string) ? result->raw_string : "");
+               result ? result->string : "",
+               result ? result->raw_string : "");
 
         if (result != nullptr && (!isKnownRecognizedPhrase(phrase) || probability < VOICE_MIN_RESULT_PROB)) {
             printf("[MIC REJECT] prob=%.3f below %.2f or unknown phrase='%s'\n",
@@ -385,8 +385,8 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         if (phrase.empty() && result != nullptr && probability >= VOICE_MIN_RESULT_PROB) {
             printf("[MIC WARN] No printable phrase. cmd_id=%d string='%s' raw='%s'\n",
                    result->command_id[0],
-                   result->string ? result->string : "",
-                   result->raw_string ? result->raw_string : "");
+                   result->string,
+                   result->raw_string);
         }
 
         multinet->clean(modelData);
