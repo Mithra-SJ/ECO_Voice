@@ -47,7 +47,7 @@
 #define I2S_CHANNEL       I2S_CHANNEL_FMT_RIGHT_LEFT
 #define MIC_TARGET_PEAK   12000
 #define MIC_MAX_GAIN      16
-#define VOICE_MIN_RESULT_PROB        0.60f
+#define VOICE_MIN_RESULT_PROB        0.35f
 
 // ===== THRESHOLDS =====
 #define BRIGHTNESS_THRESHOLD          600   // ADC value (0-4095), higher = brighter

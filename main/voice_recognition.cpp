@@ -222,7 +222,8 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         return false;
     }
 
-    rawAudioBuffer = static_cast<int32_t *>(malloc(static_cast<size_t>(audioChunkSamples) * sizeof(int32_t)));
+    // Stereo: 2 channels × audioChunkSamples × 4 bytes each
+    rawAudioBuffer = static_cast<int32_t *>(malloc(static_cast<size_t>(audioChunkSamples) * 2 * sizeof(int32_t)));
     commandBuffer = static_cast<int16_t *>(malloc(static_cast<size_t>(audioChunkSamples) * sizeof(int16_t)));
     if (rawAudioBuffer == nullptr || commandBuffer == nullptr) {
         ESP_LOGE(TAG, "Failed to allocate audio buffers for speech recognition.");
@@ -233,7 +234,7 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         return false;
     }
 
-    multinet->set_det_threshold(modelData, 0.05f);
+    multinet->set_det_threshold(modelData, 0.35f);
     initialized = true;
 
     ESP_LOGI(TAG, "ESP-SR ready with %d predefined commands.", static_cast<int>(sizeof(kSpeechCommands) / sizeof(kSpeechCommands[0])));
@@ -317,18 +318,8 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         return "";
     }
 
-    int64_t leftEnergy = 0;
-    int64_t rightEnergy = 0;
-    for (int i = 0; i < audioChunkSamples; ++i) {
-        const int32_t leftRaw = rawAudioBuffer[i * 2];
-        const int32_t rightRaw = rawAudioBuffer[i * 2 + 1];
-        const int16_t leftSample = convertInmp441SampleToS16(leftRaw);
-        const int16_t rightSample = convertInmp441SampleToS16(rightRaw);
-        leftEnergy += std::abs(static_cast<int>(leftSample));
-        rightEnergy += std::abs(static_cast<int>(rightSample));
-    }
-
-    const bool useRightChannel = rightEnergy > leftEnergy;
+    // L/R select pin is grounded → INMP441 outputs on LEFT channel only
+    const bool useRightChannel = false;
     int sampleMin = std::numeric_limits<int16_t>::max();
     int sampleMax = std::numeric_limits<int16_t>::min();
     int64_t sampleSum = 0;
@@ -377,25 +368,25 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         std::string phrase = extractRecognizedPhrase(result);
         const float probability = (result != nullptr && result->num > 0) ? result->prob[0] : 0.0f;
 
+        // Always print raw recognition result for debugging
+        printf("[MIC RAW] cmd_id=%d phrase_id=%d prob=%.3f string='%s' raw='%s'\n",
+               result ? result->command_id[0] : -1,
+               result ? result->phrase_id[0] : -1,
+               probability,
+               (result && result->string) ? result->string : "",
+               (result && result->raw_string) ? result->raw_string : "");
+
         if (result != nullptr && (!isKnownRecognizedPhrase(phrase) || probability < VOICE_MIN_RESULT_PROB)) {
-            ESP_LOGI(TAG,
-                     "Rejected recognition. prob=%.3f phrase='%s' command_id=%d phrase_id=%d raw='%s'",
-                     probability,
-                     phrase.c_str(),
-                     result->command_id[0],
-                     result->phrase_id[0],
-                     result->raw_string);
+            printf("[MIC REJECT] prob=%.3f below %.2f or unknown phrase='%s'\n",
+                   probability, VOICE_MIN_RESULT_PROB, phrase.c_str());
             phrase.clear();
         }
 
         if (phrase.empty() && result != nullptr && probability >= VOICE_MIN_RESULT_PROB) {
-            ESP_LOGW(TAG,
-                     "Detected speech but no printable known phrase. num=%d command_id=%d phrase_id=%d string='%s' raw='%s'",
-                     result->num,
-                     result->command_id[0],
-                     result->phrase_id[0],
-                     result->string,
-                     result->raw_string);
+            printf("[MIC WARN] No printable phrase. cmd_id=%d string='%s' raw='%s'\n",
+                   result->command_id[0],
+                   result->string ? result->string : "",
+                   result->raw_string ? result->raw_string : "");
         }
 
         multinet->clean(modelData);
