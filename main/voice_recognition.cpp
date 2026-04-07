@@ -317,8 +317,19 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         return "";
     }
 
-    // L/R select pin is grounded → INMP441 outputs on LEFT channel only
-    const bool useRightChannel = false;
+    // Auto-select whichever slot carries real mic energy.
+    // Even with L/R pinned to GND, ESP32 DMA slot ordering can vary —
+    // comparing both ensures we always pick the channel with actual signal.
+    int64_t leftEnergy = 0;
+    int64_t rightEnergy = 0;
+    for (int i = 0; i < audioChunkSamples; ++i) {
+        const int16_t ls = convertInmp441SampleToS16(rawAudioBuffer[i * 2]);
+        const int16_t rs = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1]);
+        leftEnergy  += std::abs(static_cast<int>(ls));
+        rightEnergy += std::abs(static_cast<int>(rs));
+    }
+    const bool useRightChannel = rightEnergy > leftEnergy;
+
     int sampleMin = std::numeric_limits<int16_t>::max();
     int sampleMax = std::numeric_limits<int16_t>::min();
     int64_t sampleSum = 0;
