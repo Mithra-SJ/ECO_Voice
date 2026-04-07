@@ -313,6 +313,15 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     const size_t targetBytes = static_cast<size_t>(audioChunkSamples) * channelCount * sizeof(int32_t);
     size_t bytesRead = 0;
     esp_err_t err = i2s_read(I2S_PORT, rawAudioBuffer, targetBytes, &bytesRead, pdMS_TO_TICKS(120));
+
+    // Diagnostic: always print i2s_read result so we can see if audio is arriving
+    static int diagCount = 0;
+    if (++diagCount >= 50) {  // print every ~1 second (50 * 20ms task delay)
+        diagCount = 0;
+        printf("[I2S] err=%d bytesRead=%u target=%u chunkSamples=%d\n",
+               (int)err, (unsigned)bytesRead, (unsigned)targetBytes, audioChunkSamples);
+    }
+
     if (err != ESP_OK || bytesRead < targetBytes) {
         return "";
     }
@@ -329,6 +338,13 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         rightEnergy += std::abs(static_cast<int>(rs));
     }
     const bool useRightChannel = rightEnergy > leftEnergy;
+
+    // Diagnostic: show channel energies every second
+    if (diagCount == 0) {
+        printf("[CH] leftEnergy=%lld rightEnergy=%lld using=%s\n",
+               (long long)leftEnergy, (long long)rightEnergy,
+               useRightChannel ? "RIGHT" : "LEFT");
+    }
 
     int sampleMin = std::numeric_limits<int16_t>::max();
     int sampleMax = std::numeric_limits<int16_t>::min();
