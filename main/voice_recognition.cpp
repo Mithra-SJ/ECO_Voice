@@ -29,16 +29,16 @@ struct SpeechCommand {
 };
 
 constexpr SpeechCommand kSpeechCommands[] = {
-    {1, "HI"},
-    {2, "HELLO"},
-    {3, "LIGHT ON"},
-    {4, "LIGHT OFF"},
-    {5, "FAN ON"},
-    {6, "FAN OFF"},
-    {7, "STATUS"},
-    {8, "LOCK"},
-    {9, "YES"},
-    {10, "NO"},
+    {1, "hi"},
+    {2, "hello"},
+    {3, "light on"},
+    {4, "light off"},
+    {5, "fan on"},
+    {6, "fan off"},
+    {7, "status"},
+    {8, "lock"},
+    {9, "yes"},
+    {10, "no"},
 };
 
 std::string normalizePhrase(const char *input) {
@@ -260,8 +260,7 @@ bool VoiceRecognition::configureCommands() {
         }
     }
 
-    std::string secretPhrase = uppercasePhrase(SECRET_CODE_PHRASE);
-    if (esp_mn_commands_add(11, secretPhrase.c_str()) != ESP_OK) {
+    if (esp_mn_commands_add(11, SECRET_CODE_PHRASE) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to add secret code phrase: %s", SECRET_CODE_PHRASE);
         return false;
     }
