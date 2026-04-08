@@ -380,8 +380,8 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
                           / (calibrationFrames - SOUND_CALIBRATION_FRAMES + 1);
         calibrationFrames++;
         if (calibrationFrames == SOUND_CALIBRATION_FRAMES + 20) {
-            dynamicThreshold = noiseFloorLevel * 3 / 2;
-            printf("[CAL2] Noise floor=%d  speech threshold=%d  (speak within 15cm)\n",
+            dynamicThreshold = noiseFloorLevel * 6 / 5;
+            printf("[CAL2] Noise floor=%d  speech threshold=%d  (speak within 5cm)\n",
                    noiseFloorLevel, dynamicThreshold);
         }
         soundDetected = false;
