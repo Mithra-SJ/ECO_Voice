@@ -51,6 +51,9 @@ private:
     int lastPeakToPeak;
     int activeSoundFrames;
     int quietSoundFrames;
+    int noiseFloorLevel;
+    int calibrationFrames;
+    int dynamicThreshold;
 
     void configureI2S();
     bool configureCommands();

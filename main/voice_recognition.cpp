@@ -156,7 +156,10 @@ VoiceRecognition::VoiceRecognition() :
     lastLevel(0),
     lastPeakToPeak(0),
     activeSoundFrames(0),
-    quietSoundFrames(0) {
+    quietSoundFrames(0),
+    noiseFloorLevel(0),
+    calibrationFrames(0),
+    dynamicThreshold(SOUND_ACTIVITY_THRESHOLD) {
 }
 
 VoiceRecognition::~VoiceRecognition() {
@@ -376,8 +379,22 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     lastLevel = static_cast<int>(sampleSum / std::max(audioChunkSamples, 1));
     lastPeakToPeak = sampleMax - sampleMin;
 
-    const bool chunkHasSound =
-        lastLevel >= SOUND_ACTIVITY_THRESHOLD || lastPeakToPeak >= SOUND_MIN_PEAK_TO_PEAK;
+    // Noise floor calibration: measure ambient level for first SOUND_CALIBRATION_FRAMES frames.
+    // During this window soundDetected stays false so the LED doesn't glow on startup.
+    if (calibrationFrames < SOUND_CALIBRATION_FRAMES) {
+        // Running average of level during silence/startup
+        noiseFloorLevel = (noiseFloorLevel * calibrationFrames + lastLevel) / (calibrationFrames + 1);
+        calibrationFrames++;
+        if (calibrationFrames == SOUND_CALIBRATION_FRAMES) {
+            // Require level to be 2.5× the noise floor to count as real speech
+            dynamicThreshold = noiseFloorLevel * 5 / 2;
+            printf("[CAL] Noise floor=%d  speech threshold=%d\n", noiseFloorLevel, dynamicThreshold);
+        }
+        soundDetected = false;
+        return "";
+    }
+
+    const bool chunkHasSound = lastLevel >= dynamicThreshold;
 
     if (chunkHasSound) {
         ++activeSoundFrames;
@@ -449,7 +466,7 @@ int VoiceRecognition::getLastLevel() const {
 }
 
 int VoiceRecognition::getNoiseFloor() const {
-    return 0;
+    return noiseFloorLevel;
 }
 
 int VoiceRecognition::getPeakToPeak() const {
@@ -457,7 +474,7 @@ int VoiceRecognition::getPeakToPeak() const {
 }
 
 int VoiceRecognition::getDynamicThreshold() const {
-    return 0;
+    return dynamicThreshold;
 }
 
 int VoiceRecognition::getActiveFrames() const {
@@ -465,7 +482,7 @@ int VoiceRecognition::getActiveFrames() const {
 }
 
 bool VoiceRecognition::isCalibrating() const {
-    return false;
+    return calibrationFrames < SOUND_CALIBRATION_FRAMES;
 }
 
 bool VoiceRecognition::detectWakeWord() {
