@@ -332,63 +332,37 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         return "";
     }
 
-    // Calibration phase: detect active slot and measure noise floor.
-    // I2S WS phase is non-deterministic at startup — mic data can land on
-    // either slot0 (i*2+0) or slot1 (i*2+1) depending on boot timing.
-    // We measure cumulative energy on both slots and lock the higher one.
+    // Phase 1 (frames 0..SOUND_CALIBRATION_FRAMES-1): detect which DMA slot carries mic data.
+    // I2S WS phase is non-deterministic at boot — mic data lands on either slot.
     if (calibrationFrames < SOUND_CALIBRATION_FRAMES) {
-        int64_t s0e = 0, s1e = 0;
         for (int i = 0; i < audioChunkSamples; ++i) {
-            s0e += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 0])));
-            s1e += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1])));
+            calSlot0Energy += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 0])));
+            calSlot1Energy += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1])));
         }
-        calSlot0Energy += s0e;
-        calSlot1Energy += s1e;
         calibrationFrames++;
-
         if (calibrationFrames == SOUND_CALIBRATION_FRAMES) {
             useSlot0 = (calSlot0Energy >= calSlot1Energy);
-            printf("[CAL] slot0_energy=%lld slot1_energy=%lld → using %s\n",
+            printf("[CAL1] slot0=%lld slot1=%lld → locked to %s\n",
                    (long long)calSlot0Energy, (long long)calSlot1Energy,
-                   useSlot0 ? "slot0 (i*2+0)" : "slot1 (i*2+1)");
+                   useSlot0 ? "slot0" : "slot1");
         }
         soundDetected = false;
         return "";
     }
 
-    // Periodic diagnostic: show both slot energies and which is active
-    if (diagCount == 0) {
-        int64_t slot0Energy = 0, slot1Energy = 0;
-        int16_t slot0Peak = 0, slot1Peak = 0;
-        for (int i = 0; i < audioChunkSamples; ++i) {
-            const int16_t s0 = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 0]);
-            const int16_t s1 = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1]);
-            slot0Energy += std::abs(static_cast<int>(s0));
-            slot1Energy += std::abs(static_cast<int>(s1));
-            if (std::abs(static_cast<int>(s0)) > std::abs(static_cast<int>(slot0Peak))) slot0Peak = s0;
-            if (std::abs(static_cast<int>(s1)) > std::abs(static_cast<int>(slot1Peak))) slot1Peak = s1;
-        }
-        printf("[CH] slot0=energy:%lld peak:%d  slot1=energy:%lld peak:%d  active=%s\n",
-               (long long)slot0Energy, (int)slot0Peak,
-               (long long)slot1Energy, (int)slot1Peak,
-               useSlot0 ? "slot0" : "slot1");
-    }
-
-    // Process the selected slot: compute gain and fill commandBuffer
+    // Shared processing: compute gain and fill commandBuffer from active slot.
+    const int activeSlotIndex = useSlot0 ? 0 : 1;
     int sampleMin = std::numeric_limits<int16_t>::max();
     int sampleMax = std::numeric_limits<int16_t>::min();
     int64_t sampleSum = 0;
     int peakAbs = 1;
     for (int i = 0; i < audioChunkSamples; ++i) {
-        const int32_t rawSample = rawAudioBuffer[i * 2 + (useSlot0 ? 0 : 1)];
-        const int16_t sample = convertInmp441SampleToS16(rawSample);
-        peakAbs = std::max(peakAbs, std::abs(static_cast<int>(sample)));
+        const int16_t s = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + activeSlotIndex]);
+        peakAbs = std::max(peakAbs, std::abs(static_cast<int>(s)));
     }
-
     const int gain = std::max(1, std::min(MIC_MAX_GAIN, MIC_TARGET_PEAK / peakAbs));
     for (int i = 0; i < audioChunkSamples; ++i) {
-        const int32_t rawSample = rawAudioBuffer[i * 2 + (useSlot0 ? 0 : 1)];
-        int sample = static_cast<int>(convertInmp441SampleToS16(rawSample)) * gain;
+        int sample = static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + activeSlotIndex])) * gain;
         sample = std::max(static_cast<int>(std::numeric_limits<int16_t>::min()),
                           std::min(static_cast<int>(std::numeric_limits<int16_t>::max()), sample));
         commandBuffer[i] = static_cast<int16_t>(sample);
@@ -396,14 +370,34 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         sampleMin = std::min(sampleMin, sample);
         sampleMax = std::max(sampleMax, sample);
     }
-
     lastLevel = static_cast<int>(sampleSum / std::max(audioChunkSamples, 1));
     lastPeakToPeak = sampleMax - sampleMin;
 
-    // Compute dynamic threshold from noise floor on first real frame after calibration
-    if (dynamicThreshold == SOUND_ACTIVITY_THRESHOLD) {
-        dynamicThreshold = std::max(lastLevel * 3 / 2, SOUND_ACTIVITY_THRESHOLD * 3);
-        printf("[CAL] Post-cal noise level=%d  speech threshold=%d\n", lastLevel, dynamicThreshold);
+    // Phase 2 (frames SOUND_CALIBRATION_FRAMES..+19): measure noise floor using the
+    // correct slot with real gain applied. Average over 20 frames for a stable baseline.
+    if (calibrationFrames < SOUND_CALIBRATION_FRAMES + 20) {
+        noiseFloorLevel = (noiseFloorLevel * (calibrationFrames - SOUND_CALIBRATION_FRAMES) + lastLevel)
+                          / (calibrationFrames - SOUND_CALIBRATION_FRAMES + 1);
+        calibrationFrames++;
+        if (calibrationFrames == SOUND_CALIBRATION_FRAMES + 20) {
+            dynamicThreshold = noiseFloorLevel * 3 / 2;
+            printf("[CAL2] Noise floor=%d  speech threshold=%d  (speak within 15cm)\n",
+                   noiseFloorLevel, dynamicThreshold);
+        }
+        soundDetected = false;
+        return "";
+    }
+
+    // Periodic diagnostic
+    if (diagCount == 0) {
+        int64_t s0e = 0, s1e = 0;
+        for (int i = 0; i < audioChunkSamples; ++i) {
+            s0e += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 0])));
+            s1e += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1])));
+        }
+        printf("[CH] slot0=%lld slot1=%lld active=%s level=%d threshold=%d\n",
+               (long long)s0e, (long long)s1e,
+               useSlot0 ? "slot0" : "slot1", lastLevel, dynamicThreshold);
     }
 
     const bool chunkHasSound = lastLevel >= dynamicThreshold;
@@ -420,12 +414,6 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         if (quietSoundFrames >= SOUND_RELEASE_FRAMES) {
             soundDetected = false;
         }
-    }
-
-    // Silence gate: feed zeros to MultiNet when below speech threshold so
-    // background noise doesn't drive it into continuous DETECTING→TIMEOUT cycles.
-    if (!chunkHasSound) {
-        memset(commandBuffer, 0, static_cast<size_t>(audioChunkSamples) * sizeof(int16_t));
     }
 
     esp_mn_state_t state = multinet->detect(modelData, commandBuffer);
