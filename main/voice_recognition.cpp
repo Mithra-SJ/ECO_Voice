@@ -326,8 +326,10 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         return "";
     }
 
-    // INMP441 L/R=VCC → data confirmed in ESP32 DMA slot0 (index i*2+0)
-    // via dual-slot diagnostic: slot0 energy ~27k, slot1 energy=0.
+    // INMP441 L/R=GND → outputs on LEFT I2S channel (WS=LOW period).
+    // ESP32-S3 I2S_CHANNEL_FMT_RIGHT_LEFT stores LEFT at i*2+0 and RIGHT at i*2+1,
+    // despite the misleading name. Confirmed by dual-slot diagnostic:
+    // slot0 (i*2+0) energy ~27k, slot1 (i*2+1) energy=0.
     const bool useRightChannel = false;
 
     // Diagnostic: show BOTH channel energies every ~1s to identify which slot carries mic data
