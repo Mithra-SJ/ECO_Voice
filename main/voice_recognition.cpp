@@ -396,7 +396,7 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     esp_mn_state_t state = multinet->detect(modelData, commandBuffer);
 
     // Track state transitions to confirm MultiNet is processing speech
-    static esp_mn_state_t lastMnState = ESP_MN_STATE_IDLE;
+    static esp_mn_state_t lastMnState = (esp_mn_state_t)(-1);
     if (state != lastMnState) {
         printf("[MULTINET] state changed: %d -> %d\n", (int)lastMnState, (int)state);
         lastMnState = state;
