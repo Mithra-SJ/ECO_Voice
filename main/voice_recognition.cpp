@@ -394,6 +394,14 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     }
 
     esp_mn_state_t state = multinet->detect(modelData, commandBuffer);
+
+    // Track state transitions to confirm MultiNet is processing speech
+    static esp_mn_state_t lastMnState = ESP_MN_STATE_IDLE;
+    if (state != lastMnState) {
+        printf("[MULTINET] state changed: %d -> %d\n", (int)lastMnState, (int)state);
+        lastMnState = state;
+    }
+
     if (state == ESP_MN_STATE_DETECTED) {
         esp_mn_results_t *result = multinet->get_results(modelData);
         std::string phrase = extractRecognizedPhrase(result);
@@ -425,6 +433,7 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     }
 
     if (state == ESP_MN_STATE_TIMEOUT) {
+        printf("[MULTINET] TIMEOUT — speech window ended, no command matched\n");
         multinet->clean(modelData);
     }
 
