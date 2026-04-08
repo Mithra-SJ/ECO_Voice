@@ -386,9 +386,10 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         noiseFloorLevel = (noiseFloorLevel * calibrationFrames + lastLevel) / (calibrationFrames + 1);
         calibrationFrames++;
         if (calibrationFrames == SOUND_CALIBRATION_FRAMES) {
-            // Require level to be 2.5× the noise floor to count as real speech
-            dynamicThreshold = noiseFloorLevel * 5 / 2;
-            printf("[CAL] Noise floor=%d  speech threshold=%d\n", noiseFloorLevel, dynamicThreshold);
+            // Require level to be 1.5× the noise floor to count as real speech
+            dynamicThreshold = noiseFloorLevel * 3 / 2;
+            printf("[CAL] Noise floor=%d  speech threshold=%d  (speak clearly within 15cm)\n",
+                   noiseFloorLevel, dynamicThreshold);
         }
         soundDetected = false;
         return "";
@@ -408,6 +409,12 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         if (quietSoundFrames >= SOUND_RELEASE_FRAMES) {
             soundDetected = false;
         }
+    }
+
+    // Silence gate: feed zeros to MultiNet when below speech threshold so
+    // background noise doesn't drive it into continuous DETECTING→TIMEOUT cycles.
+    if (!chunkHasSound) {
+        memset(commandBuffer, 0, static_cast<size_t>(audioChunkSamples) * sizeof(int16_t));
     }
 
     esp_mn_state_t state = multinet->detect(modelData, commandBuffer);
