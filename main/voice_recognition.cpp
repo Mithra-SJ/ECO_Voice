@@ -240,7 +240,7 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         return false;
     }
 
-    multinet->set_det_threshold(modelData, 0.25f);
+    multinet->set_det_threshold(modelData, 0.10f);
     initialized = true;
 
     ESP_LOGI(TAG, "ESP-SR ready with %d predefined commands.", static_cast<int>(sizeof(kSpeechCommands) / sizeof(kSpeechCommands[0])));
