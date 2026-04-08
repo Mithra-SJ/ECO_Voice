@@ -331,14 +331,23 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     // the continuous audio stream fed to MultiNet.
     const bool useRightChannel = true;
 
-    // Diagnostic: show right-channel energy snapshot every ~1s
+    // Diagnostic: show BOTH channel energies every ~1s to identify which slot carries mic data
     if (diagCount == 0) {
-        int64_t rightEnergy = 0;
+        int64_t slot0Energy = 0;  // DMA index i*2+0
+        int64_t slot1Energy = 0;  // DMA index i*2+1
+        int16_t slot0Peak = 0;
+        int16_t slot1Peak = 0;
         for (int i = 0; i < audioChunkSamples; ++i) {
-            const int16_t rs = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1]);
-            rightEnergy += std::abs(static_cast<int>(rs));
+            const int16_t s0 = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 0]);
+            const int16_t s1 = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1]);
+            slot0Energy += std::abs(static_cast<int>(s0));
+            slot1Energy += std::abs(static_cast<int>(s1));
+            if (std::abs(static_cast<int>(s0)) > std::abs(static_cast<int>(slot0Peak))) slot0Peak = s0;
+            if (std::abs(static_cast<int>(s1)) > std::abs(static_cast<int>(slot1Peak))) slot1Peak = s1;
         }
-        printf("[CH] rightEnergy=%lld (RIGHT fixed)\n", (long long)rightEnergy);
+        printf("[CH] slot0(i*2+0)=energy:%lld peak:%d  slot1(i*2+1)=energy:%lld peak:%d\n",
+               (long long)slot0Energy, (int)slot0Peak,
+               (long long)slot1Energy, (int)slot1Peak);
     }
 
     int sampleMin = std::numeric_limits<int16_t>::max();
