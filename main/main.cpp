@@ -436,7 +436,7 @@ static void microphone_task(void *pvParameters) {
         appliances.setActivityLED(speechActive);
 
         if (!phrase.empty()) {
-            printf("Heard: %s\n", phrase.c_str());
+            printf("[HEARD] %s\n", phrase.c_str());
             speechWasActive = true;
             lastSpeechReportMs = nowMs;
 
@@ -444,11 +444,12 @@ static void microphone_task(void *pvParameters) {
             entry.timestampMs = esp_timer_get_time() / 1000;
             entry.phrase = phrase;
             addMicLogEntry(entry);
-        } else if (speechActive && (!speechWasActive || (nowMs - lastSpeechReportMs) >= 1000)) {
-            printf("Speech detected. level=%d p2p=%d\n",
-                   microphone.getLastLevel(), microphone.getPeakToPeak());
-            speechWasActive = true;
+        } else if ((nowMs - lastSpeechReportMs) >= 1000) {
+            printf("[MIC] level=%d p2p=%d%s\n",
+                   microphone.getLastLevel(), microphone.getPeakToPeak(),
+                   speechActive ? " [ACTIVE]" : "");
             lastSpeechReportMs = nowMs;
+            speechWasActive = speechActive;
         } else if (!speechActive) {
             speechWasActive = false;
         }

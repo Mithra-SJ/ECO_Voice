@@ -47,15 +47,15 @@
 #define I2S_CHANNEL       I2S_CHANNEL_FMT_RIGHT_LEFT
 #define MIC_TARGET_PEAK   12000
 #define MIC_MAX_GAIN      16
-#define VOICE_MIN_RESULT_PROB        0.35f
+#define VOICE_MIN_RESULT_PROB        0.25f
 
 // ===== THRESHOLDS =====
 #define BRIGHTNESS_THRESHOLD          600   // ADC value (0-4095), higher = brighter
 #define MOTION_TIMEOUT_MS             5000  // Motion detection persistence
 #define WAKE_THRESHOLD                500   // Legacy threshold retained for compatibility
-#define SOUND_ACTIVITY_THRESHOLD      20  // Average decoded mic amplitude considered "sound"
+#define SOUND_ACTIVITY_THRESHOLD      5   // Average decoded mic amplitude considered "sound"
 #define SOUND_ACTIVITY_MARGIN         1   // Margin above learned idle noise floor
-#define SOUND_MIN_PEAK_TO_PEAK        400  // Reject nearly flat or stuck input frames
+#define SOUND_MIN_PEAK_TO_PEAK        80  // Reject nearly flat or stuck input frames
 #define SOUND_CONSECUTIVE_FRAMES      4     // Require several valid frames before blinking
 #define SOUND_RELEASE_FRAMES          8     // Require several quiet frames before clearing sound
 #define SOUND_CALIBRATION_FRAMES      40    // Startup frames used to learn the idle noise floor
