@@ -228,7 +228,7 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         return false;
     }
 
-    // Stereo: 2 channels × audioChunkSamples × 4 bytes each
+    // Stereo: 2 channels x audioChunkSamples x 4 bytes each.
     rawAudioBuffer = static_cast<int32_t *>(malloc(static_cast<size_t>(audioChunkSamples) * 2 * sizeof(int32_t)));
     commandBuffer = static_cast<int16_t *>(malloc(static_cast<size_t>(audioChunkSamples) * sizeof(int16_t)));
     if (rawAudioBuffer == nullptr || commandBuffer == nullptr) {
@@ -319,21 +319,10 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     const size_t targetBytes = static_cast<size_t>(audioChunkSamples) * channelCount * sizeof(int32_t);
     size_t bytesRead = 0;
     esp_err_t err = i2s_read(I2S_PORT, rawAudioBuffer, targetBytes, &bytesRead, pdMS_TO_TICKS(120));
-
-    // Diagnostic: always print i2s_read result so we can see if audio is arriving
-    static int diagCount = 0;
-    if (++diagCount >= 50) {  // print every ~1 second (50 * 20ms task delay)
-        diagCount = 0;
-        printf("[I2S] err=%d bytesRead=%u target=%u chunkSamples=%d\n",
-               (int)err, (unsigned)bytesRead, (unsigned)targetBytes, audioChunkSamples);
-    }
-
     if (err != ESP_OK || bytesRead < targetBytes) {
         return "";
     }
 
-    // Phase 1 (frames 0..SOUND_CALIBRATION_FRAMES-1): detect which DMA slot carries mic data.
-    // I2S WS phase is non-deterministic at boot — mic data lands on either slot.
     if (calibrationFrames < SOUND_CALIBRATION_FRAMES) {
         for (int i = 0; i < audioChunkSamples; ++i) {
             calSlot0Energy += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 0])));
@@ -342,15 +331,11 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         calibrationFrames++;
         if (calibrationFrames == SOUND_CALIBRATION_FRAMES) {
             useSlot0 = (calSlot0Energy >= calSlot1Energy);
-            printf("[CAL1] slot0=%lld slot1=%lld → locked to %s\n",
-                   (long long)calSlot0Energy, (long long)calSlot1Energy,
-                   useSlot0 ? "slot0" : "slot1");
         }
         soundDetected = false;
         return "";
     }
 
-    // Shared processing: compute gain and fill commandBuffer from active slot.
     const int activeSlotIndex = useSlot0 ? 0 : 1;
     int sampleMin = std::numeric_limits<int16_t>::max();
     int sampleMax = std::numeric_limits<int16_t>::min();
@@ -373,31 +358,15 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     lastLevel = static_cast<int>(sampleSum / std::max(audioChunkSamples, 1));
     lastPeakToPeak = sampleMax - sampleMin;
 
-    // Phase 2 (frames SOUND_CALIBRATION_FRAMES..+19): measure noise floor using the
-    // correct slot with real gain applied. Average over 20 frames for a stable baseline.
     if (calibrationFrames < SOUND_CALIBRATION_FRAMES + 20) {
         noiseFloorLevel = (noiseFloorLevel * (calibrationFrames - SOUND_CALIBRATION_FRAMES) + lastLevel)
                           / (calibrationFrames - SOUND_CALIBRATION_FRAMES + 1);
         calibrationFrames++;
         if (calibrationFrames == SOUND_CALIBRATION_FRAMES + 20) {
             dynamicThreshold = noiseFloorLevel * 6 / 5;
-            printf("[CAL2] Noise floor=%d  speech threshold=%d  (speak within 5cm)\n",
-                   noiseFloorLevel, dynamicThreshold);
         }
         soundDetected = false;
         return "";
-    }
-
-    // Periodic diagnostic
-    if (diagCount == 0) {
-        int64_t s0e = 0, s1e = 0;
-        for (int i = 0; i < audioChunkSamples; ++i) {
-            s0e += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 0])));
-            s1e += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1])));
-        }
-        printf("[CH] slot0=%lld slot1=%lld active=%s level=%d threshold=%d\n",
-               (long long)s0e, (long long)s1e,
-               useSlot0 ? "slot0" : "slot1", lastLevel, dynamicThreshold);
     }
 
     const bool chunkHasSound = lastLevel >= dynamicThreshold;
@@ -418,37 +387,17 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
 
     esp_mn_state_t state = multinet->detect(modelData, commandBuffer);
 
-    // Track state transitions to confirm MultiNet is processing speech
-    static esp_mn_state_t lastMnState = (esp_mn_state_t)(-1);
-    if (state != lastMnState) {
-        printf("[MULTINET] state changed: %d -> %d\n", (int)lastMnState, (int)state);
-        lastMnState = state;
-    }
-
     if (state == ESP_MN_STATE_DETECTED) {
         esp_mn_results_t *result = multinet->get_results(modelData);
         std::string phrase = extractRecognizedPhrase(result);
         const float probability = (result != nullptr && result->num > 0) ? result->prob[0] : 0.0f;
 
-        // Always print raw recognition result for debugging
-        printf("[MIC RAW] cmd_id=%d phrase_id=%d prob=%.3f string='%s' raw='%s'\n",
-               result ? result->command_id[0] : -1,
-               result ? result->phrase_id[0] : -1,
-               probability,
-               result ? result->string : "",
-               result ? result->raw_string : "");
-
         if (result != nullptr && (!isKnownRecognizedPhrase(phrase) || probability < VOICE_MIN_RESULT_PROB)) {
-            printf("[MIC REJECT] prob=%.3f below %.2f or unknown phrase='%s'\n",
-                   probability, VOICE_MIN_RESULT_PROB, phrase.c_str());
             phrase.clear();
         }
 
         if (phrase.empty() && result != nullptr && probability >= VOICE_MIN_RESULT_PROB) {
-            printf("[MIC WARN] No printable phrase. cmd_id=%d string='%s' raw='%s'\n",
-                   result->command_id[0],
-                   result->string,
-                   result->raw_string);
+            phrase = "recognized unknown word";
         }
 
         multinet->clean(modelData);
@@ -456,8 +405,8 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     }
 
     if (state == ESP_MN_STATE_TIMEOUT) {
-        printf("[MULTINET] TIMEOUT — speech window ended, no command matched\n");
         multinet->clean(modelData);
+        return "recognized unknown word";
     }
 
     return "";

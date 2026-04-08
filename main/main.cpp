@@ -388,10 +388,9 @@ static void setLiveMicLog(bool enabled) {
             liveMicLogEnabled = false;
             return;
         }
-        printf("Live mic log enabled. Speak one of the predefined words or phrases.\n");
-        printf("Type 'mic log off' to stop live recognition.\n");
+        printf("mic log enabled\n");
     } else {
-        printf("Live mic log disabled.\n");
+        printf("mic log disabled\n");
     }
 }
 
@@ -418,40 +417,25 @@ static bool tryUnlockWithSecret(const std::string& command) {
 }
 
 static void microphone_task(void *pvParameters) {
-    bool speechWasActive = false;
-    int64_t lastSpeechReportMs = 0;
-
     while (1) {
         if (!liveMicLogEnabled) {
             appliances.setActivityLED(false);
-            speechWasActive = false;
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
 
         std::string phrase = microphone.pollRecognizedPhrase();
         const bool speechActive = microphone.detectSound();
-        const int64_t nowMs = esp_timer_get_time() / 1000;
 
         appliances.setActivityLED(speechActive);
 
         if (!phrase.empty()) {
-            printf("[HEARD] %s\n", phrase.c_str());
-            speechWasActive = true;
-            lastSpeechReportMs = nowMs;
+            printf("%s\n", phrase.c_str());
 
             MicLogEntry entry;
             entry.timestampMs = esp_timer_get_time() / 1000;
             entry.phrase = phrase;
             addMicLogEntry(entry);
-        } else if ((nowMs - lastSpeechReportMs) >= 1000) {
-            printf("[MIC] level=%d p2p=%d%s\n",
-                   microphone.getLastLevel(), microphone.getPeakToPeak(),
-                   speechActive ? " [ACTIVE]" : "");
-            lastSpeechReportMs = nowMs;
-            speechWasActive = speechActive;
-        } else if (!speechActive) {
-            speechWasActive = false;
         }
 
         vTaskDelay(pdMS_TO_TICKS(20));
