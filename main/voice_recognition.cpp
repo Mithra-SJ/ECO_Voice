@@ -326,10 +326,9 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         return "";
     }
 
-    // INMP441 L/R=GND → data confirmed in ESP32 DMA right slot (index i*2+1).
-    // Fixed selection prevents frame-by-frame channel switching that corrupts
-    // the continuous audio stream fed to MultiNet.
-    const bool useRightChannel = true;
+    // INMP441 L/R=VCC → data confirmed in ESP32 DMA slot0 (index i*2+0)
+    // via dual-slot diagnostic: slot0 energy ~27k, slot1 energy=0.
+    const bool useRightChannel = false;
 
     // Diagnostic: show BOTH channel energies every ~1s to identify which slot carries mic data
     if (diagCount == 0) {
