@@ -159,7 +159,10 @@ VoiceRecognition::VoiceRecognition() :
     quietSoundFrames(0),
     noiseFloorLevel(0),
     calibrationFrames(0),
-    dynamicThreshold(SOUND_ACTIVITY_THRESHOLD) {
+    dynamicThreshold(SOUND_ACTIVITY_THRESHOLD),
+    useSlot0(true),
+    calSlot0Energy(0),
+    calSlot1Energy(0) {
 }
 
 VoiceRecognition::~VoiceRecognition() {
@@ -329,18 +332,34 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         return "";
     }
 
-    // INMP441 L/R=GND → outputs on LEFT I2S channel (WS=LOW period).
-    // ESP32-S3 I2S_CHANNEL_FMT_RIGHT_LEFT stores LEFT at i*2+0 and RIGHT at i*2+1,
-    // despite the misleading name. Confirmed by dual-slot diagnostic:
-    // slot0 (i*2+0) energy ~27k, slot1 (i*2+1) energy=0.
-    const bool useRightChannel = false;
+    // Calibration phase: detect active slot and measure noise floor.
+    // I2S WS phase is non-deterministic at startup — mic data can land on
+    // either slot0 (i*2+0) or slot1 (i*2+1) depending on boot timing.
+    // We measure cumulative energy on both slots and lock the higher one.
+    if (calibrationFrames < SOUND_CALIBRATION_FRAMES) {
+        int64_t s0e = 0, s1e = 0;
+        for (int i = 0; i < audioChunkSamples; ++i) {
+            s0e += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 0])));
+            s1e += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1])));
+        }
+        calSlot0Energy += s0e;
+        calSlot1Energy += s1e;
+        calibrationFrames++;
 
-    // Diagnostic: show BOTH channel energies every ~1s to identify which slot carries mic data
+        if (calibrationFrames == SOUND_CALIBRATION_FRAMES) {
+            useSlot0 = (calSlot0Energy >= calSlot1Energy);
+            printf("[CAL] slot0_energy=%lld slot1_energy=%lld → using %s\n",
+                   (long long)calSlot0Energy, (long long)calSlot1Energy,
+                   useSlot0 ? "slot0 (i*2+0)" : "slot1 (i*2+1)");
+        }
+        soundDetected = false;
+        return "";
+    }
+
+    // Periodic diagnostic: show both slot energies and which is active
     if (diagCount == 0) {
-        int64_t slot0Energy = 0;  // DMA index i*2+0
-        int64_t slot1Energy = 0;  // DMA index i*2+1
-        int16_t slot0Peak = 0;
-        int16_t slot1Peak = 0;
+        int64_t slot0Energy = 0, slot1Energy = 0;
+        int16_t slot0Peak = 0, slot1Peak = 0;
         for (int i = 0; i < audioChunkSamples; ++i) {
             const int16_t s0 = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 0]);
             const int16_t s1 = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1]);
@@ -349,24 +368,26 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
             if (std::abs(static_cast<int>(s0)) > std::abs(static_cast<int>(slot0Peak))) slot0Peak = s0;
             if (std::abs(static_cast<int>(s1)) > std::abs(static_cast<int>(slot1Peak))) slot1Peak = s1;
         }
-        printf("[CH] slot0(i*2+0)=energy:%lld peak:%d  slot1(i*2+1)=energy:%lld peak:%d\n",
+        printf("[CH] slot0=energy:%lld peak:%d  slot1=energy:%lld peak:%d  active=%s\n",
                (long long)slot0Energy, (int)slot0Peak,
-               (long long)slot1Energy, (int)slot1Peak);
+               (long long)slot1Energy, (int)slot1Peak,
+               useSlot0 ? "slot0" : "slot1");
     }
 
+    // Process the selected slot: compute gain and fill commandBuffer
     int sampleMin = std::numeric_limits<int16_t>::max();
     int sampleMax = std::numeric_limits<int16_t>::min();
     int64_t sampleSum = 0;
     int peakAbs = 1;
     for (int i = 0; i < audioChunkSamples; ++i) {
-        const int32_t rawSample = rawAudioBuffer[i * 2 + (useRightChannel ? 1 : 0)];
+        const int32_t rawSample = rawAudioBuffer[i * 2 + (useSlot0 ? 0 : 1)];
         const int16_t sample = convertInmp441SampleToS16(rawSample);
         peakAbs = std::max(peakAbs, std::abs(static_cast<int>(sample)));
     }
 
     const int gain = std::max(1, std::min(MIC_MAX_GAIN, MIC_TARGET_PEAK / peakAbs));
     for (int i = 0; i < audioChunkSamples; ++i) {
-        const int32_t rawSample = rawAudioBuffer[i * 2 + (useRightChannel ? 1 : 0)];
+        const int32_t rawSample = rawAudioBuffer[i * 2 + (useSlot0 ? 0 : 1)];
         int sample = static_cast<int>(convertInmp441SampleToS16(rawSample)) * gain;
         sample = std::max(static_cast<int>(std::numeric_limits<int16_t>::min()),
                           std::min(static_cast<int>(std::numeric_limits<int16_t>::max()), sample));
@@ -379,20 +400,10 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     lastLevel = static_cast<int>(sampleSum / std::max(audioChunkSamples, 1));
     lastPeakToPeak = sampleMax - sampleMin;
 
-    // Noise floor calibration: measure ambient level for first SOUND_CALIBRATION_FRAMES frames.
-    // During this window soundDetected stays false so the LED doesn't glow on startup.
-    if (calibrationFrames < SOUND_CALIBRATION_FRAMES) {
-        // Running average of level during silence/startup
-        noiseFloorLevel = (noiseFloorLevel * calibrationFrames + lastLevel) / (calibrationFrames + 1);
-        calibrationFrames++;
-        if (calibrationFrames == SOUND_CALIBRATION_FRAMES) {
-            // Require level to be 1.5× the noise floor to count as real speech
-            dynamicThreshold = noiseFloorLevel * 3 / 2;
-            printf("[CAL] Noise floor=%d  speech threshold=%d  (speak clearly within 15cm)\n",
-                   noiseFloorLevel, dynamicThreshold);
-        }
-        soundDetected = false;
-        return "";
+    // Compute dynamic threshold from noise floor on first real frame after calibration
+    if (dynamicThreshold == SOUND_ACTIVITY_THRESHOLD) {
+        dynamicThreshold = std::max(lastLevel * 3 / 2, SOUND_ACTIVITY_THRESHOLD * 3);
+        printf("[CAL] Post-cal noise level=%d  speech threshold=%d\n", lastLevel, dynamicThreshold);
     }
 
     const bool chunkHasSound = lastLevel >= dynamicThreshold;

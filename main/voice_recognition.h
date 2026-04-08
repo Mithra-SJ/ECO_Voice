@@ -54,6 +54,9 @@ private:
     int noiseFloorLevel;
     int calibrationFrames;
     int dynamicThreshold;
+    bool useSlot0;
+    int64_t calSlot0Energy;
+    int64_t calSlot1Energy;
 
     void configureI2S();
     bool configureCommands();
