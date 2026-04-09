@@ -409,7 +409,7 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         if (result != nullptr && result->num > 0) {
             printf("[MULTINET] TIMEOUT — best candidate: cmd_id=%d prob=%.3f string='%s'\n",
                    result->command_id[0], result->prob[0],
-                   result->string ? result->string : "");
+                   result->string);
         } else {
             printf("[MULTINET] TIMEOUT — speech window ended, no command matched\n");
         }
