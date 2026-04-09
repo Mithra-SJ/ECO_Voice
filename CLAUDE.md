@@ -1,68 +1,205 @@
-I wanted to build an IOT project "ECO Voice - Edge based , context aware, Offline Voice Recognition for Home automation"
+# ECO Voice — Project Guide for Claude
 
-I use these components
+---
 
-ESP32-S3 - main controller
-INMP441 I2S Microphone - voice recognition
-PIR Motion Sensor (HC-SR501)- for sensing motion
-LDR (Light Dependent Resistor) module - sensing brightness of room 
-2-Channel Relay Module (5V, 10A Opto-isolated) - switches light and fan
-LED (Red/Green) - appliance status indication
-INA219 Current Sensor (±3.2A) - current sensing
-DHT11 Temperature and Humidity Sensor - Temperature and Humidity sensing
-USB Cable (ESP32 – Micro-USB/Type-C)
-3V to 6V DC Motor(0.3–0.6 A) - Demo of a Fan
-White LED - Demo of a light
-Red Led - Status led for locked status
-Green LED - Status LED for Unlocked Status
-DF Player Mini MP3 - For storing Recorded Audio Replies in a SD Card and Palying them
-Speaker - For Playing the Audio Replies from the SD Card in the DF Player
+## Project Overview
 
-Working:
-    i need the appliance to run completely in offline...
-the wake word is "Hi ESP",next it should say me "listening for secret code" and  listen for next 30 sec for the secret code 
-if i say the crt code it should say "unlocked" and start listening for commands or else it should say me "wrong code" and 
-i can try as many times within that 30 seconds, after that the system off again i wanna say wake again and then try the password, 
- then i will give command like, Light on, light off , fan on, fan off, status(says me the status of the sensor readings) 
-[for all activity i need it to reply back] and if i say lock it should lock, after that i wanna say Hi ESP again to wake it again,and again i need to say the secret code to unlock the system
+ECO Voice is an IoT-based home automation system built on the ESP32-S3.
+The project has two versions maintained on separate git branches:
 
-sensor working:
-     the motion sensor senser motion around and is no motion detected the light fan both will not on it will ask the user "no motion detected would u still want to continue with ur action" 
-if user says yes it will on the appliance what the user told, if they say no it wont switch on, 
-    the LDR is to sense brightness, it is used only when we need to on light, if the brightness is high i want it to say, "Its bright alredy u still want to switch on light?, and proceeds nly if user says yes
-    the DHT11 will sense the temperature and humidity and if the value is below threshold it wont allow fan and asks for users wish the second time
-    similarly current sensor will see the load and update the user if the load is fluctuating.
-I wanted to build an IOT project "ECO Voice - Edge based , context aware, Offline Voice Recognition for Home automation"
+| Branch | Version | Description |
+|--------|---------|-------------|
+| `offline_version` | v1 — Offline Voice | Fully offline, wake word + MultiNet speech recognition controls appliances |
+| `online_version` | v2 — Online Remote | Internet-connected, web dashboard controls appliances from anywhere |
 
-I use these components
+---
 
-ESP32-S3 - main controller
-INMP441 I2S Microphone - voice recognition
-PIR Motion Sensor (HC-SR501)- for sensing motion
-LDR (Light Dependent Resistor) module - sensing brightness of room 
-2-Channel Relay Module (5V, 10A Opto-isolated) - switches light and fan
-LED (Red/Green) - appliance status indication
-INA219 Current Sensor (±3.2A) - current sensing
-DHT11 Temperature and Humidity Sensor - Temperature and Humidity sensing
-USB Cable (ESP32 – Micro-USB/Type-C)
-3V to 6V DC Motor(0.3–0.6 A) - Demo of a Fan
-White LED - Demo of a light
-Red Led - Status led for locked status
-Green LED - Status LED for Unlocked Status
-DF Player Mini MP3 - For storing Recorded Audio Replies in a SD Card and Palying them
-Speaker - For Playing the Audio Replies from the SD Card in the DF Player
+## Hardware Components
 
-Working:
-    i need the appliance to run completely in offline...
-the wake word is "Hi ESP",next it should say me "listening for secret code" and  listen for next 30 sec for the secret code 
-if i say the crt code it should say "unlocked" and start listening for commands or else it should say me "wrong code" and 
-i can try as many times within that 30 seconds, after that the system off again i wanna say wake again and then try the password, 
- then i will give command like, Light on, light off , fan on, fan off, status(says me the status of the sensor readings) 
-[for all activity i need it to reply back] and if i say lock it should lock, after that i wanna say Hi ESP again to wake it again,and again i need to say the secret code to unlock the system
+| Component | Model | Purpose |
+|-----------|-------|---------|
+| Microcontroller | ESP32-S3 (N16R8 — 16MB Flash, 8MB PSRAM) | Main controller |
+| Microphone | INMP441 (I2S) | Voice recognition (offline version only) |
+| Motion Sensor | PIR HC-SR501 | Detects presence in room |
+| Light Sensor | LDR module | Measures ambient brightness (ADC) |
+| Temperature/Humidity | DHT11 | Reads temperature (°C) and humidity (%RH) |
+| Current Sensor | INA219 (I2C, ±3.2A) | Monitors load current, voltage, power |
+| Relay Module | 2-channel, 5V, 10A opto-isolated | Switches light and fan |
+| Fan (demo) | 3V–6V DC motor (0.3–0.6A) | Demonstrates fan control |
+| Light (demo) | White LED | Demonstrates light control |
+| Status LEDs | Red LED + Green LED | System status indication |
+| Audio (offline only) | DFPlayer Mini + SD card + Speaker | Plays pre-recorded audio responses |
 
-sensor working:
-     the motion sensor senser motion around and is no motion detected the light fan both will not on it will ask the user "no motion detected would u still want to continue with ur action" 
-if user says yes it will on the appliance what the user told, if they say no it wont switch on, 
-    the LDR is to sense brightness, it is used only when we need to on light, if the brightness is high i want it to say, "Its bright alredy u still want to switch on light?, and proceeds nly if user says yes
-    the DHT11 will sense the temperature and humidity and if the value is below threshold it wont allow fan and asks for users wish the second time
-    similarly current sensor will see the load and update the user if the load is fluctuating.
+### Pin Assignments
+| Signal | GPIO |
+|--------|------|
+| I2S SCK | 5 |
+| I2S WS | 4 |
+| I2S SD | 6 |
+| PIR | 7 |
+| LDR (ADC) | 8 |
+| DHT11 | 9 |
+| INA219 SDA | 1 |
+| INA219 SCL | 2 |
+| Relay Light | 17 |
+| Relay Fan | 18 |
+| LED Green | 14 |
+| LED Red | 13 |
+| DFPlayer TX | 16 |
+| DFPlayer RX | 15 |
+| DFPlayer BUSY | 10 |
+
+---
+
+## Version 1 — Offline Voice (branch: `offline_version`)
+
+### How It Works
+- Fully offline, no internet required
+- Wake word: **"Hi ESP"** (detected by ESP-SR MultiNet7)
+- After wake: system says "listening for secret code" and listens for 30 seconds
+- User speaks the secret code phrase (default: "one four five zero")
+- If correct: system unlocks and listens for commands
+- If wrong: system says "wrong code", user can retry within the same 30-second window
+- After 30 seconds with no valid code: system locks again
+- Commands: `turn light on`, `turn light off`, `turn fan on`, `turn fan off`, `show status`, `lock system`
+- All actions have audio replies via DFPlayer Mini
+
+### Speech Commands (MultiNet7 registered phrases)
+| ID | Phrase to say | Action |
+|----|--------------|--------|
+| 1 | "hi esp" | Wake word |
+| 2 | "hello there" | Alternative wake |
+| 3 | "turn light on" | Turn light relay ON |
+| 4 | "turn light off" | Turn light relay OFF |
+| 5 | "turn fan on" | Turn fan relay ON |
+| 6 | "turn fan off" | Turn fan relay OFF |
+| 7 | "show status" | Read out sensor values |
+| 8 | "lock system" | Lock the system |
+| 9 | "yes please" | Confirm a prompted action |
+| 10 | "no thanks" | Reject a prompted action |
+| 11 | "one four five zero" | Secret code (default) |
+
+### Sensor Guards (Offline)
+| Sensor | Behaviour |
+|--------|----------|
+| PIR | If no motion detected and user gives a command → ask "no motion detected, do you still want to continue?" |
+| LDR | If brightness > threshold and user says "turn light on" → ask "it's already bright, do you still want to switch on?" |
+| DHT11 | If temp < 22°C or humidity < 40% and user says "turn fan on" → warn and ask for confirmation |
+| INA219 | If voltage < 4.5V or fluctuation > 0.3V → inform user via audio |
+
+### Known Issue
+- MultiNet recognition rate is inconsistent in practice. Single-syllable words ("yes", "no", "lock") were replaced with longer phrases to improve accuracy. Still unreliable in noisy environments. This was the primary reason for switching to the online version.
+
+---
+
+## Version 2 — Online Remote Control (branch: `online_version`)
+
+### Architecture Reference
+See `architecture.md` in this branch for the full system design.
+
+### How It Works
+- ESP32-S3 connects to home WiFi on boot
+- Syncs continuously with **Firebase Realtime Database**
+- Any authorized user opens the **web app** (browser, any device, anywhere in the world)
+- Logs in with email + password (Firebase Authentication)
+- Dashboard shows live sensor readings and appliance states
+- User clicks toggles → command written to Firebase → ESP32 receives it within ~1 second → relay toggles → status confirmed back to Firebase → dashboard updates
+
+### Tech Stack
+| Layer | Technology |
+|-------|-----------|
+| ESP32 firmware | C++ / ESP-IDF + Firebase-ESP-Client library |
+| Cloud database | Firebase Realtime Database |
+| Authentication | Firebase Authentication (email/password) |
+| Web app | React + Firebase JS SDK |
+| Hosting | Firebase Hosting (free, HTTPS) |
+
+### Firebase Database Schema
+```
+/eco_voice
+  /commands
+    light: false        ← web app writes, ESP32 reads
+    fan:   false
+  /sensors
+    temperature: 26.0   ← ESP32 writes, web app reads
+    humidity:    60.0
+    motion:      true
+    light_level: 400
+    current:     0.5
+    voltage:     5.0
+    power:       2.5
+  /status
+    light_on:  false    ← ESP32 writes (confirmed state)
+    fan_on:    false
+    last_seen: 1712345678
+```
+
+### Web App Features
+- Login page with email/password
+- Dashboard:
+  - Device online/offline indicator (based on `last_seen`)
+  - Light ON/OFF toggle with current state
+  - Fan ON/OFF toggle with current state
+  - Live sensor cards (temperature, humidity, motion, brightness, current, voltage, power)
+  - Alert banner if appliance has been ON above a time threshold
+  - Sensor-based warnings before executing commands (same logic as offline version)
+
+### Sensor Guards (Online)
+| Sensor | Behaviour |
+|--------|----------|
+| PIR | Web app shows warning if no motion detected before confirming command |
+| LDR | Web app warns if brightness > threshold when turning light ON |
+| DHT11 | Web app warns if temp/humidity below threshold when turning fan ON |
+| INA219 | Dashboard shows alert if voltage is low or fluctuating |
+
+### Security
+- Firebase Auth rejects all unauthenticated requests
+- Firebase Security Rules: only authenticated users can read/write `/eco_voice`
+- WiFi SSID/password and Firebase credentials stored in `secrets.h` (not committed to git)
+
+### Hardware Changes vs Offline Version
+- INMP441 microphone: not used
+- DFPlayer Mini + Speaker: not used
+- ESP32 WiFi radio: active
+- All sensors and relays: same as offline version
+
+### Build Phases
+1. Firebase project setup + security rules + database schema
+2. ESP32 firmware: WiFi + Firebase connect + sensor push loop
+3. ESP32 firmware: command stream listener + relay control
+4. React web app: login page + Firebase auth
+5. React web app: dashboard + real-time sensor display
+6. React web app: appliance toggles + sensor-based warnings + alerts
+7. Firebase Hosting deploy + end-to-end test
+
+---
+
+## Repository Structure
+
+```
+ECO_Voice/
+├── main/
+│   ├── main.cpp                 # App entry point and task setup
+│   ├── voice_recognition.cpp/h  # ESP-SR MultiNet7 pipeline (offline only)
+│   ├── audio_handler.cpp/h      # DFPlayer Mini driver (offline only)
+│   ├── sensor_handler.cpp/h     # DHT11, PIR, LDR, INA219 reads
+│   ├── appliance_control.cpp/h  # Relay and LED control
+│   ├── config.h                 # Pin definitions and thresholds
+│   ├── secrets.h                # WiFi credentials, Firebase token, secret code (not in git)
+│   └── dht11.c/h                # DHT11 low-level driver
+├── architecture.md              # Online version system design (this branch)
+├── CLAUDE.md                    # This file
+├── platformio.ini               # PlatformIO build config
+└── partitions.csv               # Flash partition table
+```
+
+---
+
+## Development Notes
+
+- Platform: PlatformIO + ESP-IDF 5.5.0
+- Board: `esp32-s3-devkitc-1-n16r8` (16MB QIO flash, 8MB PSRAM)
+- Flash command: `pio run --target upload`
+- Monitor command: `pio device monitor --port COMX --baud 115200`
+- The `dependencies.lock` file tracks ESP-SR and other component versions — do not modify manually
+- Always pull before pushing; the team pushes from multiple machines
