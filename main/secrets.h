@@ -1,17 +1,22 @@
 /*
- * secrets.h — Credentials file.
+ * secrets.h — Credentials file. Not committed to git.
  *
- * SETUP:
- *   Edit this file and change SECRET_CODE to your own phrase.
+ * Fill in your Firebase and WiFi credentials below.
  */
 
 #ifndef SECRETS_H
 #define SECRETS_H
 
-#define SECRET_CODE        "1450"
-// Spoken form of SECRET_CODE registered with ESP-SR MultiNet.
-// Must be a pronounceable English phrase the model can recognize.
-// Change both values together if you update the secret code.
-#define SECRET_CODE_PHRASE "one four five zero"
+// WiFi
+#define WIFI_SSID        "your_wifi_ssid"
+#define WIFI_PASSWORD    "your_wifi_password"
+
+// Firebase
+#define FIREBASE_API_KEY        "your_firebase_api_key"
+#define FIREBASE_DATABASE_URL   "https://your-project-id-default-rtdb.firebaseio.com"
+
+// Firebase device account (the device@ecovoice.local user you created)
+#define FIREBASE_DEVICE_EMAIL    "device@ecovoice.local"
+#define FIREBASE_DEVICE_PASSWORD "your_device_account_password"
 
 #endif // SECRETS_H

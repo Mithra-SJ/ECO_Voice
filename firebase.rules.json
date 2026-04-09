@@ -1,0 +1,8 @@
+{
+  "rules": {
+    "eco_voice": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    }
+  }
+}

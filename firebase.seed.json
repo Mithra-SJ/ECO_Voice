@@ -1,0 +1,22 @@
+{
+  "eco_voice": {
+    "commands": {
+      "light": false,
+      "fan": false
+    },
+    "sensors": {
+      "temperature": 0.0,
+      "humidity": 0.0,
+      "motion": false,
+      "light_level": 0,
+      "current": 0.0,
+      "voltage": 0.0,
+      "power": 0.0
+    },
+    "status": {
+      "light_on": false,
+      "fan_on": false,
+      "last_seen": 0
+    }
+  }
+}
