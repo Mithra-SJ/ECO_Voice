@@ -1,68 +1,52 @@
 /*
- * Sensor Handler - Manages all environmental sensors
- * PIR Motion, LDR Light, DHT11 Temp/Humidity (INA219 simplified)
+ * sensor_handler.h — ECO Voice Online Version
+ * Reads PIR, LDR, DHT11, INA219
  */
 
 #ifndef SENSOR_HANDLER_H
 #define SENSOR_HANDLER_H
 
-#include <stdint.h>
-#include <stdbool.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#include "dht11.h"  // ESP-IDF DHT11 library
-
-#ifdef __cplusplus
-}
-#endif
+#include <Arduino.h>
+#include <Adafruit_INA219.h>
+#include <DHT.h>
+#include "config.h"
 
 class SensorHandler {
 public:
     SensorHandler();
-    bool init();
+    void init();
     void update();
 
-    // Sensor Readings
-    bool isMotionDetected();
-    int getLightLevel();          // 0-4095 ADC value
-    float getTemperature();       // °C
-    float getHumidity();          // %RH
-    float getCurrent();           // Amps
-    float getVoltage();           // Volts
-    float getPower();             // Watts
-
-    // Voltage status (INA219 monitoring)
-    bool isVoltageLow();          // true if below LOW_VOLTAGE_THRESHOLD
-    bool isVoltageFluctuating();  // true if delta between readings exceeds threshold
+    float getTemperature() const  { return temperature; }
+    float getHumidity() const     { return humidity; }
+    bool isMotionDetected() const { return motionDetected; }
+    int getLightLevel() const     { return lightLevel; }
+    float getCurrent() const      { return current; }
+    float getVoltage() const      { return voltage; }
+    float getPower() const        { return power; }
+    bool isVoltageLow() const     { return voltage > 0.5f && voltage < LOW_VOLTAGE_THRESHOLD; }
+    bool isVoltageFluctuating() const { return voltageFluctuating; }
 
 private:
-    // DHT dht;
+    Adafruit_INA219 ina219;
+    DHT dht;
 
-    bool motionDetected;
-    bool ina219Available;
-    bool dht11Available;
-    int lightLevel;
     float temperature;
     float humidity;
-    float current_mA;
-    float busVoltage;
-    float shuntVoltage;
-    float loadVoltage;
-    float power_mW;
-    float voltageDelta;
-    bool voltageInitialized;
-    int dht11FailureCount;
-    int64_t lastDht11ReadMs;
-    int64_t lastDht11LogMs;
-
+    bool motionDetected;
+    int lightLevel;
+    float current;
+    float voltage;
+    float power;
+    float lastVoltage;
+    bool voltageFluctuating;
+    bool ina219Ready;
     unsigned long lastMotionTime;
+
     void readPIR();
     void readLDR();
     void readDHT11();
-    void readCurrentSensor();
+    void readINA219();
 };
 
 #endif // SENSOR_HANDLER_H

@@ -1,42 +1,34 @@
 /*
- * Appliance Control - Manages relays and status LEDs
+ * appliance_control.h — ECO Voice Online Version
+ * Controls relays and status LEDs via Arduino GPIO
  */
 
 #ifndef APPLIANCE_CONTROL_H
 #define APPLIANCE_CONTROL_H
 
-#include <stdint.h>
-#include <stdbool.h>
+#include <Arduino.h>
+#include "config.h"
 
 class ApplianceControl {
 public:
     ApplianceControl();
     void init();
 
-    // Relay Control
-    void setLight(bool state);
-    void setFan(bool state);
+    void setLight(bool on);
+    void setFan(bool on);
     void turnOffAll();
 
-    // Status Query
-    bool isLightOn();
-    bool isFanOn();
-    bool isUnlocked() const;
+    bool isLightOn() const { return lightOn; }
+    bool isFanOn() const   { return fanOn; }
 
-    // LED Status Indicators
-    void setStatusLED(bool unlocked);  // true = green (unlocked), false = red (locked)
-    void blinkStatusLED(bool green, int times);
-    void setActivityLED(bool on);
-    void printOutputLevels();
-    void runOutputDiagnostic();
-    void runPinDiagnostic(int pin);
+    // Green LED = online, Red LED = offline/error
+    void setOnlineLED(bool online);
 
 private:
-    bool lightState;
-    bool fanState;
-    bool unlockedState;
+    bool lightOn;
+    bool fanOn;
 
-    void updateRelay(int pin, bool state);
+    void writeRelay(int pin, bool on);
 };
 
 #endif // APPLIANCE_CONTROL_H
