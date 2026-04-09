@@ -29,16 +29,16 @@ struct SpeechCommand {
 };
 
 constexpr SpeechCommand kSpeechCommands[] = {
-    {1, "hi"},
-    {2, "hello"},
-    {3, "light on"},
-    {4, "light off"},
-    {5, "fan on"},
-    {6, "fan off"},
-    {7, "status"},
-    {8, "lock"},
-    {9, "yes"},
-    {10, "no"},
+    {1, "hi esp"},
+    {2, "hello there"},
+    {3, "turn light on"},
+    {4, "turn light off"},
+    {5, "turn fan on"},
+    {6, "turn fan off"},
+    {7, "show status"},
+    {8, "lock system"},
+    {9, "yes please"},
+    {10, "no thanks"},
 };
 
 std::string normalizePhrase(const char *input) {
@@ -405,6 +405,14 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     }
 
     if (state == ESP_MN_STATE_TIMEOUT) {
+        esp_mn_results_t *result = multinet->get_results(modelData);
+        if (result != nullptr && result->num > 0) {
+            printf("[MULTINET] TIMEOUT — best candidate: cmd_id=%d prob=%.3f string='%s'\n",
+                   result->command_id[0], result->prob[0],
+                   result->string ? result->string : "");
+        } else {
+            printf("[MULTINET] TIMEOUT — speech window ended, no command matched\n");
+        }
         multinet->clean(modelData);
         return "recognized unknown word";
     }
