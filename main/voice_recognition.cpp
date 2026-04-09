@@ -16,6 +16,7 @@
 
 #include "driver/gpio.h"
 #include "driver/i2s.h"
+#include "esp_afe_sr_models.h"
 #include "esp_log.h"
 #include "esp_mn_models.h"
 #include "esp_mn_speech_commands.h"
@@ -68,13 +69,6 @@ std::string normalizePhrase(const char *input) {
         phrase.pop_back();
     }
 
-    return phrase;
-}
-
-std::string uppercasePhrase(const char *input) {
-    std::string phrase = normalizePhrase(input);
-    std::transform(phrase.begin(), phrase.end(), phrase.begin(),
-                   [](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
     return phrase;
 }
 
@@ -147,9 +141,12 @@ VoiceRecognition::VoiceRecognition() :
     initialized(false),
     sensorHandler(nullptr),
     models(nullptr),
+    afeHandle(nullptr),
+    afeData(nullptr),
     multinet(nullptr),
     modelData(nullptr),
     audioChunkSamples(0),
+    afeFeedSamples(0),
     rawAudioBuffer(nullptr),
     commandBuffer(nullptr),
     soundDetected(false),
@@ -166,6 +163,11 @@ VoiceRecognition::VoiceRecognition() :
 }
 
 VoiceRecognition::~VoiceRecognition() {
+    if (afeData != nullptr && afeHandle != nullptr) {
+        afeHandle->destroy(afeData);
+        afeData = nullptr;
+    }
+
     if (modelData != nullptr && multinet != nullptr) {
         multinet->destroy(modelData);
         modelData = nullptr;
@@ -222,15 +224,55 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         return false;
     }
 
+    afe_config_t *afeConfig = afe_config_init("M", models, AFE_TYPE_SR, AFE_MODE_HIGH_PERF);
+    if (afeConfig == nullptr) {
+        ESP_LOGE(TAG, "Failed to create AFE config.");
+        return false;
+    }
+
+    // MultiNet command recognition is used directly without a separate wake-word stage.
+    afeConfig->wakenet_init = false;
+    afeConfig->vad_init = true;
+    afeConfig->agc_init = true;
+    afeConfig->fixed_first_channel = true;
+    afeConfig->fixed_output_channel = true;
+    afeConfig->afe_linear_gain = 1.0f;
+
+    afeHandle = esp_afe_handle_from_config(afeConfig);
+    if (afeHandle == nullptr) {
+        ESP_LOGE(TAG, "Failed to get AFE handle.");
+        afe_config_free(afeConfig);
+        return false;
+    }
+
+    afeData = afeHandle->create_from_config(afeConfig);
+    afe_config_free(afeConfig);
+    if (afeData == nullptr) {
+        ESP_LOGE(TAG, "Failed to create AFE instance.");
+        return false;
+    }
+
     audioChunkSamples = multinet->get_samp_chunksize(modelData);
     if (audioChunkSamples <= 0) {
         ESP_LOGE(TAG, "Invalid MultiNet chunk size: %d", audioChunkSamples);
         return false;
     }
 
-    // Stereo: 2 channels x audioChunkSamples x 4 bytes each.
-    rawAudioBuffer = static_cast<int32_t *>(malloc(static_cast<size_t>(audioChunkSamples) * 2 * sizeof(int32_t)));
-    commandBuffer = static_cast<int16_t *>(malloc(static_cast<size_t>(audioChunkSamples) * sizeof(int16_t)));
+    afeFeedSamples = afeHandle->get_feed_chunksize(afeData);
+    const int afeFetchSamples = afeHandle->get_fetch_chunksize(afeData);
+    if (afeFeedSamples <= 0 || afeFetchSamples <= 0) {
+        ESP_LOGE(TAG, "Invalid AFE chunk sizes. feed=%d fetch=%d", afeFeedSamples, afeFetchSamples);
+        return false;
+    }
+
+    if (afeFetchSamples != audioChunkSamples) {
+        ESP_LOGE(TAG, "AFE fetch chunk (%d) does not match MultiNet chunk (%d).", afeFetchSamples, audioChunkSamples);
+        return false;
+    }
+
+    // Read stereo I2S slots from INMP441 and collapse to mono for AFE feed.
+    rawAudioBuffer = static_cast<int32_t *>(malloc(static_cast<size_t>(afeFeedSamples) * 2 * sizeof(int32_t)));
+    commandBuffer = static_cast<int16_t *>(malloc(static_cast<size_t>(afeFeedSamples) * sizeof(int16_t)));
     if (rawAudioBuffer == nullptr || commandBuffer == nullptr) {
         ESP_LOGE(TAG, "Failed to allocate audio buffers for speech recognition.");
         return false;
@@ -240,7 +282,7 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         return false;
     }
 
-    multinet->set_det_threshold(modelData, 0.10f);
+    multinet->set_det_threshold(modelData, 0.35f);
     initialized = true;
 
     ESP_LOGI(TAG, "ESP-SR ready with %d predefined commands.", static_cast<int>(sizeof(kSpeechCommands) / sizeof(kSpeechCommands[0])));
@@ -260,13 +302,26 @@ bool VoiceRecognition::configureCommands() {
     esp_mn_commands_clear();
 
     for (const auto &command : kSpeechCommands) {
-        if (esp_mn_commands_add(command.id, command.phrase) != ESP_OK) {
+        const std::string phrase = normalizePhrase(command.phrase);
+        if (phrase.length() < ESP_MN_MIN_PHRASE_LEN || multinet->check_speech_command(modelData, phrase.c_str()) != 0) {
+            ESP_LOGE(TAG, "Speech command is not valid for the active MultiNet model: %s", command.phrase);
+            return false;
+        }
+
+        if (esp_mn_commands_add(command.id, const_cast<char *>(phrase.c_str())) != ESP_OK) {
             ESP_LOGE(TAG, "Failed to add speech command: %s", command.phrase);
             return false;
         }
     }
 
-    if (esp_mn_commands_add(11, SECRET_CODE_PHRASE) != ESP_OK) {
+    const std::string secretPhrase = normalizePhrase(SECRET_CODE_PHRASE);
+    if (secretPhrase.length() < ESP_MN_MIN_PHRASE_LEN ||
+        multinet->check_speech_command(modelData, secretPhrase.c_str()) != 0) {
+        ESP_LOGE(TAG, "Secret code phrase is not valid for the active MultiNet model: %s", SECRET_CODE_PHRASE);
+        return false;
+    }
+
+    if (esp_mn_commands_add(11, const_cast<char *>(secretPhrase.c_str())) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to add secret code phrase: %s", SECRET_CODE_PHRASE);
         return false;
     }
@@ -316,7 +371,7 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     }
 
     const size_t channelCount = 2;
-    const size_t targetBytes = static_cast<size_t>(audioChunkSamples) * channelCount * sizeof(int32_t);
+    const size_t targetBytes = static_cast<size_t>(afeFeedSamples) * channelCount * sizeof(int32_t);
     size_t bytesRead = 0;
     esp_err_t err = i2s_read(I2S_PORT, rawAudioBuffer, targetBytes, &bytesRead, pdMS_TO_TICKS(120));
     if (err != ESP_OK || bytesRead < targetBytes) {
@@ -324,7 +379,7 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     }
 
     if (calibrationFrames < SOUND_CALIBRATION_FRAMES) {
-        for (int i = 0; i < audioChunkSamples; ++i) {
+        for (int i = 0; i < afeFeedSamples; ++i) {
             calSlot0Energy += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 0])));
             calSlot1Energy += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1])));
         }
@@ -337,20 +392,35 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     }
 
     const int activeSlotIndex = useSlot0 ? 0 : 1;
-    int sampleMin = std::numeric_limits<int16_t>::max();
-    int sampleMax = std::numeric_limits<int16_t>::min();
-    int64_t sampleSum = 0;
     int peakAbs = 1;
-    for (int i = 0; i < audioChunkSamples; ++i) {
-        const int16_t s = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + activeSlotIndex]);
-        peakAbs = std::max(peakAbs, std::abs(static_cast<int>(s)));
+    for (int i = 0; i < afeFeedSamples; ++i) {
+        const int16_t sample = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + activeSlotIndex]);
+        peakAbs = std::max(peakAbs, std::abs(static_cast<int>(sample)));
     }
+
     const int gain = std::max(1, std::min(MIC_MAX_GAIN, MIC_TARGET_PEAK / peakAbs));
-    for (int i = 0; i < audioChunkSamples; ++i) {
+    for (int i = 0; i < afeFeedSamples; ++i) {
         int sample = static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + activeSlotIndex])) * gain;
         sample = std::max(static_cast<int>(std::numeric_limits<int16_t>::min()),
                           std::min(static_cast<int>(std::numeric_limits<int16_t>::max()), sample));
         commandBuffer[i] = static_cast<int16_t>(sample);
+    }
+
+    if (afeHandle->feed(afeData, commandBuffer) <= 0) {
+        return "";
+    }
+
+    afe_fetch_result_t *afeResult = afeHandle->fetch_with_delay(afeData, pdMS_TO_TICKS(1));
+    if (afeResult == nullptr || afeResult->ret_value != ESP_OK || afeResult->data == nullptr ||
+        afeResult->data_size < audioChunkSamples * static_cast<int>(sizeof(int16_t))) {
+        return "";
+    }
+
+    int sampleMin = std::numeric_limits<int16_t>::max();
+    int sampleMax = std::numeric_limits<int16_t>::min();
+    int64_t sampleSum = 0;
+    for (int i = 0; i < audioChunkSamples; ++i) {
+        const int sample = afeResult->data[i];
         sampleSum += std::abs(sample);
         sampleMin = std::min(sampleMin, sample);
         sampleMax = std::max(sampleMax, sample);
@@ -363,13 +433,13 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
                           / (calibrationFrames - SOUND_CALIBRATION_FRAMES + 1);
         calibrationFrames++;
         if (calibrationFrames == SOUND_CALIBRATION_FRAMES + 20) {
-            dynamicThreshold = noiseFloorLevel * 6 / 5;
+            dynamicThreshold = std::max(SOUND_ACTIVITY_THRESHOLD, noiseFloorLevel * 6 / 5);
         }
         soundDetected = false;
         return "";
     }
 
-    const bool chunkHasSound = lastLevel >= dynamicThreshold;
+    const bool chunkHasSound = (afeResult->vad_state == VAD_SPEECH) || (lastLevel >= dynamicThreshold);
 
     if (chunkHasSound) {
         ++activeSoundFrames;
@@ -385,7 +455,7 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         }
     }
 
-    esp_mn_state_t state = multinet->detect(modelData, commandBuffer);
+    esp_mn_state_t state = multinet->detect(modelData, afeResult->data);
 
     if (state == ESP_MN_STATE_DETECTED) {
         esp_mn_results_t *result = multinet->get_results(modelData);
@@ -407,14 +477,13 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     if (state == ESP_MN_STATE_TIMEOUT) {
         esp_mn_results_t *result = multinet->get_results(modelData);
         if (result != nullptr && result->num > 0) {
-            printf("[MULTINET] TIMEOUT — best candidate: cmd_id=%d prob=%.3f string='%s'\n",
-                   result->command_id[0], result->prob[0],
-                   result->string);
+            printf("[MULTINET] TIMEOUT - best candidate: cmd_id=%d prob=%.3f string='%s'\n",
+                   result->command_id[0], result->prob[0], result->string);
         } else {
-            printf("[MULTINET] TIMEOUT — speech window ended, no command matched\n");
+            printf("[MULTINET] TIMEOUT - speech window ended, no command matched\n");
         }
         multinet->clean(modelData);
-        return "recognized unknown word";
+        return "";
     }
 
     return "";
@@ -468,8 +537,11 @@ bool VoiceRecognition::verifySecretCode(const std::string& code) {
 
 std::string VoiceRecognition::recognizeYesNo() {
     std::string phrase = pollRecognizedPhrase();
-    if (phrase == "yes" || phrase == "no") {
-        return phrase;
+    if (phrase.rfind("yes", 0) == 0) {
+        return "yes";
+    }
+    if (phrase.rfind("no", 0) == 0) {
+        return "no";
     }
     return "";
 }

@@ -10,6 +10,7 @@
 
 extern "C" {
 #include "model_path.h"
+#include "esp_afe_sr_models.h"
 #include "esp_mn_iface.h"
 }
 
@@ -41,9 +42,12 @@ private:
     bool initialized;
     SensorHandler* sensorHandler;
     srmodel_list_t *models;
+    const esp_afe_sr_iface_t *afeHandle;
+    esp_afe_sr_data_t *afeData;
     esp_mn_iface_t *multinet;
     model_iface_data_t *modelData;
     int audioChunkSamples;
+    int afeFeedSamples;
     int32_t *rawAudioBuffer;
     int16_t *commandBuffer;
     bool soundDetected;
