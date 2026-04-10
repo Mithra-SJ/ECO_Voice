@@ -16,10 +16,12 @@
 #include "sensor_handler.h"
 #include "appliance_control.h"
 #include "firebase_handler.h"
+#include "voice_handler.h"
 
 static SensorHandler    sensors;
 static ApplianceControl appliances;
 static FirebaseHandler  firebase;
+static VoiceHandler     voice;
 
 static unsigned long lastSensorPush   = 0;
 static unsigned long lastCommandCheck = 0;
@@ -62,6 +64,13 @@ void setup() {
         Serial.println("[MAIN] System ready.");
     } else {
         Serial.println("[MAIN] Firebase not ready — running offline (sensors only).");
+    }
+
+    // Voice recognition (INMP441 + ESP-SR) — runs as its own FreeRTOS task
+    if (voice.init(&appliances, &firebase)) {
+        voice.startTask();
+    } else {
+        Serial.println("[MAIN] Voice init failed — continuing without voice control.");
     }
 }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ref, onValue, set } from 'firebase/database'
 import { signOut } from 'firebase/auth'
 import { db, auth } from '../firebase'
@@ -9,6 +9,9 @@ function Dashboard({ user }) {
   const [commands, setCommands] = useState({ light: false, fan: false })
   const [status, setStatus] = useState({})
   const [online, setOnline] = useState(false)
+  const [listening, setListening] = useState(false)
+  const [voiceStatus, setVoiceStatus] = useState('')
+  const recognitionRef = useRef(null)
 
   useEffect(() => {
     const ecoRef = ref(db, '/eco_voice')
@@ -46,6 +49,56 @@ function Dashboard({ user }) {
   const toggleFan = () => {
     const next = !commands.fan
     set(ref(db, '/eco_voice/commands/fan'), next)
+  }
+
+  const handleVoiceCommand = (text) => {
+    if (text.includes('light on') || text.includes('turn on light') || text.includes('switch on light')) {
+      set(ref(db, '/eco_voice/commands/light'), true)
+      setVoiceStatus('Light ON')
+    } else if (text.includes('light off') || text.includes('turn off light') || text.includes('switch off light')) {
+      set(ref(db, '/eco_voice/commands/light'), false)
+      setVoiceStatus('Light OFF')
+    } else if (text.includes('fan on') || text.includes('turn on fan') || text.includes('switch on fan')) {
+      set(ref(db, '/eco_voice/commands/fan'), true)
+      setVoiceStatus('Fan ON')
+    } else if (text.includes('fan off') || text.includes('turn off fan') || text.includes('switch off fan')) {
+      set(ref(db, '/eco_voice/commands/fan'), false)
+      setVoiceStatus('Fan OFF')
+    } else {
+      setVoiceStatus(`Not recognized: "${text}"`)
+    }
+  }
+
+  const startVoice = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      setVoiceStatus('Voice not supported — use Chrome or Edge')
+      return
+    }
+    const recognition = new SpeechRecognition()
+    recognitionRef.current = recognition
+    recognition.lang = 'en-US'
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript.toLowerCase().trim()
+      handleVoiceCommand(transcript)
+    }
+    recognition.onend = () => setListening(false)
+    recognition.onerror = (e) => {
+      setVoiceStatus(e.error === 'no-speech' ? 'No speech detected' : `Error: ${e.error}`)
+      setListening(false)
+    }
+
+    recognition.start()
+    setListening(true)
+    setVoiceStatus('Listening...')
+  }
+
+  const stopVoice = () => {
+    recognitionRef.current?.stop()
+    setListening(false)
   }
 
   const handleLogout = () => signOut(auth)
@@ -107,6 +160,27 @@ function Dashboard({ user }) {
             Turn {commands.fan ? 'Off' : 'On'}
           </button>
         </div>
+      </div>
+
+      {/* Voice Control */}
+      <div className="section-title">Voice Control</div>
+      <div className="voice-panel">
+        <button
+          className={`voice-btn ${listening ? 'voice-btn--active' : ''}`}
+          onClick={listening ? stopVoice : startVoice}
+          disabled={!online}
+          title={online ? 'Click to speak a command' : 'Device offline'}
+        >
+          {listening ? '⏹ Stop' : '🎙 Speak'}
+        </button>
+        <div className="voice-commands">
+          Say: <em>"light on"</em>, <em>"light off"</em>, <em>"fan on"</em>, <em>"fan off"</em>
+        </div>
+        {voiceStatus && (
+          <div className={`voice-status ${voiceStatus === 'Listening...' ? 'voice-status--listening' : ''}`}>
+            {voiceStatus}
+          </div>
+        )}
       </div>
 
       {/* Sensor Readings */}

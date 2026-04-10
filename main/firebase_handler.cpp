@@ -72,6 +72,14 @@ void FirebaseHandler::pushStatus(ApplianceControl& appliances) {
     }
 }
 
+void FirebaseHandler::writeCommand(const char* device, bool state) {
+    if (!isReady()) return;
+    String path = String("/eco_voice/commands/") + device;
+    if (!Firebase.RTDB.setBool(&fbdo, path.c_str(), state)) {
+        Serial.printf("[FIREBASE] writeCommand failed: %s\n", fbdo.errorReason().c_str());
+    }
+}
+
 void FirebaseHandler::checkCommands(ApplianceControl& appliances) {
     if (!isReady()) return;
 

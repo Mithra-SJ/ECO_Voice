@@ -20,6 +20,7 @@ public:
     void pushSensors(SensorHandler& sensors);
     void pushStatus(ApplianceControl& appliances);
     void checkCommands(ApplianceControl& appliances);
+    void writeCommand(const char* device, bool state);  // called by voice handler
 
 private:
     FirebaseData fbdo;

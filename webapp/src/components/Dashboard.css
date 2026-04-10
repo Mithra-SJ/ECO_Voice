@@ -130,6 +130,71 @@
 .toggle-btn:hover:not(:disabled) { opacity: 0.85; }
 .toggle-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* Voice control */
+.voice-panel {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: #1e293b;
+  border: 2px solid #334155;
+  border-radius: 16px;
+  padding: 20px 24px;
+}
+
+.voice-btn {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: #3b82f6;
+  color: white;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.voice-btn--active {
+  background: #ef4444;
+  animation: pulse 1.2s infinite;
+}
+
+.voice-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.voice-btn:hover:not(:disabled):not(.voice-btn--active) {
+  background: #2563eb;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.7; }
+}
+
+.voice-commands {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.voice-commands em {
+  color: #94a3b8;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.voice-status {
+  font-size: 0.875rem;
+  color: #4ade80;
+  font-weight: 600;
+}
+
+.voice-status--listening {
+  color: #fb923c;
+}
+
 /* Sensor grid */
 .sensor-grid {
   display: grid;
