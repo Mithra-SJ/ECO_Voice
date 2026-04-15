@@ -37,10 +37,22 @@ public:
     // Voltage status (INA219 monitoring)
     bool isVoltageLow();          // true if below LOW_VOLTAGE_THRESHOLD
     bool isVoltageFluctuating();  // true if delta between readings exceeds threshold
+    bool isCurrentFluctuating();  // true if current delta between readings exceeds threshold
+    bool isOvercurrent();         // true if current exceeds OVERCURRENT_THRESHOLD
+    bool isIna219Available() const;
+    bool isDht11Available() const;
+
+    // Test hooks
+    void clearOverrides();
+    void setMotionOverride(bool enabled, bool value);
+    void setLightLevelOverride(bool enabled, int value);
+    void setTemperatureOverride(bool enabled, float value);
+    void setHumidityOverride(bool enabled, float value);
+    void setVoltageOverride(bool enabled, float value);
+    void setCurrentOverride(bool enabled, float valueAmps);
+    void setPowerOverride(bool enabled, float valueWatts);
 
 private:
-    // DHT dht;
-
     bool motionDetected;
     bool ina219Available;
     bool dht11Available;
@@ -54,9 +66,27 @@ private:
     float power_mW;
     float voltageDelta;
     bool voltageInitialized;
+    float lastCurrent_A;
+    float currentDelta_A;
+    bool currentInitialized;
     int dht11FailureCount;
     int64_t lastDht11ReadMs;
     int64_t lastDht11LogMs;
+
+    bool motionOverrideEnabled;
+    bool motionOverrideValue;
+    bool lightOverrideEnabled;
+    int lightOverrideValue;
+    bool temperatureOverrideEnabled;
+    float temperatureOverrideValue;
+    bool humidityOverrideEnabled;
+    float humidityOverrideValue;
+    bool voltageOverrideEnabled;
+    float voltageOverrideValue;
+    bool currentOverrideEnabled;
+    float currentOverrideValue_A;
+    bool powerOverrideEnabled;
+    float powerOverrideValue_W;
 
     unsigned long lastMotionTime;
     void readPIR();

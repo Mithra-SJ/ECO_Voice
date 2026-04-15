@@ -159,7 +159,9 @@ VoiceRecognition::VoiceRecognition() :
     dynamicThreshold(SOUND_ACTIVITY_THRESHOLD),
     useSlot0(true),
     calSlot0Energy(0),
-    calSlot1Energy(0) {
+    calSlot1Energy(0),
+    lastSlot0Level(0),
+    lastSlot1Level(0) {
 }
 
 VoiceRecognition::~VoiceRecognition() {
@@ -380,8 +382,10 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
 
     if (calibrationFrames < SOUND_CALIBRATION_FRAMES) {
         for (int i = 0; i < afeFeedSamples; ++i) {
-            calSlot0Energy += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 0])));
-            calSlot1Energy += std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1])));
+            const int slot0Abs = std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 0])));
+            const int slot1Abs = std::abs(static_cast<int>(convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1])));
+            calSlot0Energy += slot0Abs;
+            calSlot1Energy += slot1Abs;
         }
         calibrationFrames++;
         if (calibrationFrames == SOUND_CALIBRATION_FRAMES) {
@@ -389,6 +393,32 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
         }
         soundDetected = false;
         return "";
+    }
+
+    int64_t slot0Sum = 0;
+    int64_t slot1Sum = 0;
+    int slot0Peak = 1;
+    int slot1Peak = 1;
+    for (int i = 0; i < afeFeedSamples; ++i) {
+        const int slot0Sample = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 0]);
+        const int slot1Sample = convertInmp441SampleToS16(rawAudioBuffer[i * 2 + 1]);
+        const int slot0Abs = std::abs(slot0Sample);
+        const int slot1Abs = std::abs(slot1Sample);
+        slot0Sum += slot0Abs;
+        slot1Sum += slot1Abs;
+        slot0Peak = std::max(slot0Peak, slot0Abs);
+        slot1Peak = std::max(slot1Peak, slot1Abs);
+    }
+
+    lastSlot0Level = static_cast<int>(slot0Sum / std::max(afeFeedSamples, 1));
+    lastSlot1Level = static_cast<int>(slot1Sum / std::max(afeFeedSamples, 1));
+
+    const bool slot0ClearlyStronger = slot0Peak > (slot1Peak * 3) / 2;
+    const bool slot1ClearlyStronger = slot1Peak > (slot0Peak * 3) / 2;
+    if (slot0ClearlyStronger) {
+        useSlot0 = true;
+    } else if (slot1ClearlyStronger) {
+        useSlot0 = false;
     }
 
     const int activeSlotIndex = useSlot0 ? 0 : 1;
@@ -511,6 +541,18 @@ int VoiceRecognition::getDynamicThreshold() const {
 
 int VoiceRecognition::getActiveFrames() const {
     return activeSoundFrames;
+}
+
+int VoiceRecognition::getActiveSlot() const {
+    return useSlot0 ? 0 : 1;
+}
+
+int VoiceRecognition::getLastSlot0Level() const {
+    return lastSlot0Level;
+}
+
+int VoiceRecognition::getLastSlot1Level() const {
+    return lastSlot1Level;
 }
 
 bool VoiceRecognition::isCalibrating() const {

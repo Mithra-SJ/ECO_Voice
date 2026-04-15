@@ -31,6 +31,9 @@ public:
     int getPeakToPeak() const;
     int getDynamicThreshold() const;
     int getActiveFrames() const;
+    int getActiveSlot() const;
+    int getLastSlot0Level() const;
+    int getLastSlot1Level() const;
     bool isCalibrating() const;
     bool detectWakeWord();
     std::string recognizeCommand();
@@ -61,6 +64,8 @@ private:
     bool useSlot0;
     int64_t calSlot0Energy;
     int64_t calSlot1Energy;
+    int lastSlot0Level;
+    int lastSlot1Level;
 
     void configureI2S();
     bool configureCommands();

@@ -45,9 +45,11 @@
 #define SAMPLE_RATE       16000
 #define BITS_PER_SAMPLE   I2S_BITS_PER_SAMPLE_32BIT
 #define I2S_CHANNEL       I2S_CHANNEL_FMT_RIGHT_LEFT
-#define MIC_TARGET_PEAK   12000
-#define MIC_MAX_GAIN      16
+#define MIC_TARGET_PEAK   16000
+#define MIC_MAX_GAIN      20
 #define VOICE_MIN_RESULT_PROB        0.10f
+#define AFE_LINEAR_GAIN             2.5f
+#define MULTINET_DET_THRESHOLD      0.28f
 
 // ===== THRESHOLDS =====
 #define BRIGHTNESS_THRESHOLD          600   // ADC value (0-4095), higher = brighter
@@ -68,6 +70,8 @@
 // INA219 — Voltage monitoring (informational notifications) — tuned for 5V load
 #define LOW_VOLTAGE_THRESHOLD         4.5f  // Volts — below this, warn user (90% of 5V)
 #define VOLTAGE_FLUCTUATION_THRESHOLD 0.3f  // Volts delta between readings — warn user
+#define CURRENT_FLUCTUATION_THRESHOLD 0.15f // Amps delta between readings — report load fluctuation
+#define OVERCURRENT_THRESHOLD         0.80f // Amps — report excessive load current
 
 // ===== AUTHENTICATION =====
 #define AUTH_TIMEOUT_MS         30000 // 30 seconds per attempt window
@@ -77,8 +81,8 @@
 // ===== VOICE RECOGNITION SETTINGS =====
 #define SECRET_CODE_CMD_ID      8     // MultiNet command ID reserved for secret code phrase
 #define WAKE_WORD               "hi esp"
-#define WAKE_CONFIDENCE         0.7   // Confidence threshold (0.0 - 1.0)
-#define COMMAND_TIMEOUT_MS      5000  // Time to wait for command after wake
+#define WAKE_CONFIDENCE         0.62f // WakeNet threshold; lower is more sensitive
+#define COMMAND_TIMEOUT_MS      7000  // Time to wait for command after wake
 #define YES_NO_TIMEOUT_MS       10000 // Time to wait for yes/no response
 
 // ===== SYSTEM SETTINGS =====

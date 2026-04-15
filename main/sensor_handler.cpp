@@ -15,12 +15,8 @@
 #include "sensor_handler.h"
 #include "config.h"
 
-// DHT11 library for ESP-IDF
 #include "dht11.h"
-// #include <DHT.h>
-// #define DHTTYPE DHT11
 
-// INA219 register definitions (I2C address 0x40, 7-bit)
 #define INA219_ADDR              0x40
 #define INA219_ADDR_MIN          0x40
 #define INA219_ADDR_MAX          0x4F
@@ -31,13 +27,9 @@
 #define INA219_REG_CURRENT       0x04
 #define INA219_REG_CALIBRATION   0x05
 
-// Config: 32V bus range, PGA /8 (±320mV shunt), 12-bit, continuous shunt+bus
 #define INA219_CONFIG_VALUE      0x1FFF
-
-// Calibration for 0.1Ω shunt, 1mA current LSB:
-//   Cal = trunc(0.04096 / (0.001 * 0.1)) = 4096
 #define INA219_CALIBRATION_VALUE 4096
-#define INA219_CURRENT_LSB_A     0.001f  // 1 mA per bit
+#define INA219_CURRENT_LSB_A     0.001f
 
 static uint8_t s_ina219_addr = INA219_ADDR;
 
@@ -59,7 +51,7 @@ static esp_err_t ina219_read_reg(uint8_t reg, int16_t *out) {
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, (s_ina219_addr << 1) | I2C_MASTER_WRITE, true);
     i2c_master_write_byte(cmd, reg, true);
-    i2c_master_start(cmd);  // repeated start
+    i2c_master_start(cmd);
     i2c_master_write_byte(cmd, (s_ina219_addr << 1) | I2C_MASTER_READ, true);
     i2c_master_read_byte(cmd, &data[0], I2C_MASTER_ACK);
     i2c_master_read_byte(cmd, &data[1], I2C_MASTER_NACK);
@@ -119,27 +111,39 @@ SensorHandler::SensorHandler() :
     power_mW(0),
     voltageDelta(0),
     voltageInitialized(false),
+    lastCurrent_A(0),
+    currentDelta_A(0),
+    currentInitialized(false),
     dht11FailureCount(0),
     lastDht11ReadMs(0),
     lastDht11LogMs(0),
+    motionOverrideEnabled(false),
+    motionOverrideValue(false),
+    lightOverrideEnabled(false),
+    lightOverrideValue(0),
+    temperatureOverrideEnabled(false),
+    temperatureOverrideValue(0),
+    humidityOverrideEnabled(false),
+    humidityOverrideValue(0),
+    voltageOverrideEnabled(false),
+    voltageOverrideValue(0),
+    currentOverrideEnabled(false),
+    currentOverrideValue_A(0),
+    powerOverrideEnabled(false),
+    powerOverrideValue_W(0),
     lastMotionTime(0) {
 }
 
 bool SensorHandler::init() {
     ESP_LOGI("SENSOR", "Initializing Sensors...");
 
-    // Configure PIR sensor pin
     gpio_set_direction((gpio_num_t)PIR_PIN, GPIO_MODE_INPUT);
 
-    // Configure ADC for LDR
-    // LDR_PIN = GPIO 8 → ADC1_CHANNEL_7 on ESP32-S3
     adc1_config_width(ADC_WIDTH_BIT_12);
     adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_12);
 
-    // Initialize DHT11
     DHT11_init((gpio_num_t)DHT11_PIN);
 
-    // Initialize I2C bus for INA219 (SDA=INA219_SDA, SCL=INA219_SCL)
     i2c_config_t i2c_cfg = {
         .mode             = I2C_MODE_MASTER,
         .sda_io_num       = INA219_SDA,
@@ -161,7 +165,6 @@ bool SensorHandler::init() {
         return false;
     }
 
-    // Configure INA219 — write calibration then config registers
     if (scan_for_ina219_addr(&s_ina219_addr)) {
         esp_err_t cal_err = ina219_write_reg(INA219_REG_CALIBRATION, INA219_CALIBRATION_VALUE);
         esp_err_t cfg_err = (cal_err == ESP_OK) ? ina219_write_reg(INA219_REG_CONFIG, INA219_CONFIG_VALUE) : cal_err;
@@ -190,26 +193,31 @@ void SensorHandler::update() {
 }
 
 void SensorHandler::readPIR() {
+    if (motionOverrideEnabled) {
+        motionDetected = motionOverrideValue;
+        return;
+    }
+
     int pirState = gpio_get_level((gpio_num_t)PIR_PIN);
 
     if (pirState == 1) {
         motionDetected = true;
         lastMotionTime = esp_timer_get_time() / 1000;
-    } else {
-        // Keep motion detected for MOTION_TIMEOUT_MS after last detection
-        if ((esp_timer_get_time() / 1000 - lastMotionTime) > MOTION_TIMEOUT_MS) {
-            motionDetected = false;
-        }
+    } else if ((esp_timer_get_time() / 1000 - lastMotionTime) > MOTION_TIMEOUT_MS) {
+        motionDetected = false;
     }
 }
 
 void SensorHandler::readLDR() {
-    // Read analog value from LDR — GPIO 8 = ADC1_CHANNEL_7 on ESP32-S3
+    if (lightOverrideEnabled) {
+        lightLevel = lightOverrideValue;
+        return;
+    }
+
     int raw = adc1_get_raw(ADC1_CHANNEL_7);
     lightLevel = raw;
 
-    // Optional: Apply smoothing filter
-    static int readings[10];
+    static int readings[10] = {0};
     static int index = 0;
     static long total = 0;
 
@@ -218,10 +226,21 @@ void SensorHandler::readLDR() {
     total += readings[index];
     index = (index + 1) % 10;
 
-    lightLevel = total / 10; // Average of last 10 readings
+    lightLevel = total / 10;
 }
 
 void SensorHandler::readDHT11() {
+    if (temperatureOverrideEnabled || humidityOverrideEnabled) {
+        if (temperatureOverrideEnabled) {
+            temperature = temperatureOverrideValue;
+        }
+        if (humidityOverrideEnabled) {
+            humidity = humidityOverrideValue;
+        }
+        dht11Available = true;
+        return;
+    }
+
     constexpr int kDht11ReadIntervalMs = 2000;
     constexpr int kDht11LogIntervalMs = 10000;
     constexpr int kDht11DisableAfterFailures = 5;
@@ -236,6 +255,9 @@ void SensorHandler::readDHT11() {
     if (reading.status == DHT11_OK) {
         temperature = reading.temperature;
         humidity = reading.humidity;
+        if (dht11FailureCount > 0) {
+            ESP_LOGI("DHT11", "DHT11 communication restored.");
+        }
         dht11FailureCount = 0;
         dht11Available = true;
     } else {
@@ -252,7 +274,7 @@ void SensorHandler::readDHT11() {
             return;
         }
 
-        if ((nowMs - lastDht11LogMs) >= kDht11LogIntervalMs) {
+        if (dht11FailureCount == 1 || (nowMs - lastDht11LogMs) >= kDht11LogIntervalMs) {
             lastDht11LogMs = nowMs;
             ESP_LOGW("DHT11", "DHT11 read failed, status=%d (attempt %d/%d).",
                      reading.status, dht11FailureCount, kDht11DisableAfterFailures);
@@ -261,37 +283,55 @@ void SensorHandler::readDHT11() {
 }
 
 void SensorHandler::readCurrentSensor() {
+    if (voltageOverrideEnabled || currentOverrideEnabled || powerOverrideEnabled) {
+        if (voltageOverrideEnabled) {
+            voltageInitialized = true;
+            loadVoltage = voltageOverrideValue;
+            busVoltage = voltageOverrideValue;
+        }
+        if (currentOverrideEnabled) {
+            current_mA = currentOverrideValue_A * 1000.0f;
+            currentDelta_A = currentInitialized ? fabsf(currentOverrideValue_A - lastCurrent_A) : 0.0f;
+            lastCurrent_A = currentOverrideValue_A;
+            currentInitialized = true;
+        }
+        if (powerOverrideEnabled) {
+            power_mW = powerOverrideValue_W * 1000.0f;
+        }
+        ina219Available = true;
+        return;
+    }
+
     if (!ina219Available) {
         return;
     }
 
     int16_t raw = 0;
 
-    // --- Bus Voltage (register 0x02) ---
-    // Bits 15:3 hold the result; shift right 3, multiply by 4 mV/LSB
     if (ina219_read_reg(INA219_REG_BUSVOLTAGE, &raw) == ESP_OK) {
-        float newVoltage = ((raw >> 3) * 4) / 1000.0f;  // mV → V
-        voltageDelta       = voltageInitialized ? fabsf(newVoltage - loadVoltage) : 0.0f;
+        float newVoltage = ((raw >> 3) * 4) / 1000.0f;
+        voltageDelta = voltageInitialized ? fabsf(newVoltage - loadVoltage) : 0.0f;
         voltageInitialized = true;
-        loadVoltage        = newVoltage;
-        busVoltage         = newVoltage;
+        loadVoltage = newVoltage;
+        busVoltage = newVoltage;
     } else {
         ESP_LOGW("SENSOR", "INA219 bus voltage read failed.");
     }
 
-    // --- Shunt Voltage (register 0x01) — 10 µV/LSB ---
     if (ina219_read_reg(INA219_REG_SHUNTVOLTAGE, &raw) == ESP_OK) {
-        shuntVoltage = raw * 0.01f;  // LSB = 10 µV = 0.01 mV
+        shuntVoltage = raw * 0.01f;
     }
 
-    // --- Current (register 0x04) — depends on calibration (1 mA/LSB) ---
     if (ina219_read_reg(INA219_REG_CURRENT, &raw) == ESP_OK) {
-        current_mA = raw * (INA219_CURRENT_LSB_A * 1000.0f);  // A → mA
+        const float currentA = raw * INA219_CURRENT_LSB_A;
+        currentDelta_A = currentInitialized ? fabsf(currentA - lastCurrent_A) : 0.0f;
+        currentInitialized = true;
+        lastCurrent_A = currentA;
+        current_mA = currentA * 1000.0f;
     }
 
-    // --- Power (register 0x03) — 20 × current_LSB per bit ---
     if (ina219_read_reg(INA219_REG_POWER, &raw) == ESP_OK) {
-        power_mW = raw * 20.0f * INA219_CURRENT_LSB_A * 1000.0f;  // → mW
+        power_mW = raw * 20.0f * INA219_CURRENT_LSB_A * 1000.0f;
     }
 }
 
@@ -312,7 +352,7 @@ float SensorHandler::getHumidity() {
 }
 
 float SensorHandler::getCurrent() {
-    return current_mA / 1000.0; // Convert mA to A
+    return current_mA / 1000.0f;
 }
 
 float SensorHandler::getVoltage() {
@@ -320,7 +360,7 @@ float SensorHandler::getVoltage() {
 }
 
 float SensorHandler::getPower() {
-    return power_mW / 1000.0; // Convert mW to W
+    return power_mW / 1000.0f;
 }
 
 bool SensorHandler::isVoltageLow() {
@@ -329,4 +369,65 @@ bool SensorHandler::isVoltageLow() {
 
 bool SensorHandler::isVoltageFluctuating() {
     return voltageInitialized && (voltageDelta > VOLTAGE_FLUCTUATION_THRESHOLD);
+}
+
+bool SensorHandler::isCurrentFluctuating() {
+    return currentInitialized && (currentDelta_A > CURRENT_FLUCTUATION_THRESHOLD);
+}
+
+bool SensorHandler::isOvercurrent() {
+    return currentInitialized && (getCurrent() > OVERCURRENT_THRESHOLD);
+}
+
+bool SensorHandler::isIna219Available() const {
+    return ina219Available || voltageOverrideEnabled || currentOverrideEnabled || powerOverrideEnabled;
+}
+
+bool SensorHandler::isDht11Available() const {
+    return dht11Available || temperatureOverrideEnabled || humidityOverrideEnabled;
+}
+
+void SensorHandler::clearOverrides() {
+    motionOverrideEnabled = false;
+    lightOverrideEnabled = false;
+    temperatureOverrideEnabled = false;
+    humidityOverrideEnabled = false;
+    voltageOverrideEnabled = false;
+    currentOverrideEnabled = false;
+    powerOverrideEnabled = false;
+}
+
+void SensorHandler::setMotionOverride(bool enabled, bool value) {
+    motionOverrideEnabled = enabled;
+    motionOverrideValue = value;
+}
+
+void SensorHandler::setLightLevelOverride(bool enabled, int value) {
+    lightOverrideEnabled = enabled;
+    lightOverrideValue = value;
+}
+
+void SensorHandler::setTemperatureOverride(bool enabled, float value) {
+    temperatureOverrideEnabled = enabled;
+    temperatureOverrideValue = value;
+}
+
+void SensorHandler::setHumidityOverride(bool enabled, float value) {
+    humidityOverrideEnabled = enabled;
+    humidityOverrideValue = value;
+}
+
+void SensorHandler::setVoltageOverride(bool enabled, float value) {
+    voltageOverrideEnabled = enabled;
+    voltageOverrideValue = value;
+}
+
+void SensorHandler::setCurrentOverride(bool enabled, float valueAmps) {
+    currentOverrideEnabled = enabled;
+    currentOverrideValue_A = valueAmps;
+}
+
+void SensorHandler::setPowerOverride(bool enabled, float valueWatts) {
+    powerOverrideEnabled = enabled;
+    powerOverrideValue_W = valueWatts;
 }
