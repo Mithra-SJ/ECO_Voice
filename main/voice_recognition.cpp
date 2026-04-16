@@ -27,19 +27,18 @@ namespace {
 struct SpeechCommand {
     int id;
     const char *phrase;
+    const char *phonemes;
 };
 
 constexpr SpeechCommand kSpeechCommands[] = {
-    {1, "hi esp"},
-    {2, "hello there"},
-    {3, "turn light on"},
-    {4, "turn light off"},
-    {5, "turn fan on"},
-    {6, "turn fan off"},
-    {7, "show status"},
-    {8, "lock system"},
-    {9, "yes please"},
-    {10, "no thanks"},
+    {3, "play news channel", "PLd NoZ paNcL"},
+    {14, "turn on the light", "TkN nN jc LiT"},
+    {15, "turn off the light", "TkN eF jc LiT"},
+    {19, "turn off all the lights", "TkN eF eL jc LiTS"},
+    {20, "turn on the air conditioner", "TkN nN jc fR KcNDgscNk"},
+    {21, "turn off the air conditioner", "TkN eF jc fR KcNDgscNk"},
+    {8, "lock system", "LnK SgSTcM"},
+    {9, "yes please", "YfS PLmZ"},
 };
 
 std::string normalizePhrase(const char *input) {
@@ -284,7 +283,7 @@ bool VoiceRecognition::init(SensorHandler* sensors) {
         return false;
     }
 
-    multinet->set_det_threshold(modelData, 0.35f);
+    multinet->set_det_threshold(modelData, MULTINET_DET_THRESHOLD);
     initialized = true;
 
     ESP_LOGI(TAG, "ESP-SR ready with %d predefined commands.", static_cast<int>(sizeof(kSpeechCommands) / sizeof(kSpeechCommands[0])));
@@ -302,18 +301,17 @@ bool VoiceRecognition::configureCommands() {
     }
 
     esp_mn_commands_clear();
+    int registeredCommandCount = 0;
 
     for (const auto &command : kSpeechCommands) {
         const std::string phrase = normalizePhrase(command.phrase);
-        if (phrase.length() < ESP_MN_MIN_PHRASE_LEN || multinet->check_speech_command(modelData, phrase.c_str()) != 0) {
-            ESP_LOGE(TAG, "Speech command is not valid for the active MultiNet model: %s", command.phrase);
-            return false;
-        }
+        const char *phonemes = command.phonemes;
 
-        if (esp_mn_commands_add(command.id, const_cast<char *>(phrase.c_str())) != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to add speech command: %s", command.phrase);
+        if (esp_mn_commands_phoneme_add(command.id, phrase.c_str(), phonemes) != ESP_OK) {
+            ESP_LOGW(TAG, "Skipping unsupported speech command: %s", command.phrase);
             return false;
         }
+        registeredCommandCount++;
     }
 
     const std::string secretPhrase = normalizePhrase(SECRET_CODE_PHRASE);
@@ -323,8 +321,14 @@ bool VoiceRecognition::configureCommands() {
         return false;
     }
 
-    if (esp_mn_commands_add(11, const_cast<char *>(secretPhrase.c_str())) != ESP_OK) {
+    if (esp_mn_commands_phoneme_add(11, secretPhrase.c_str(), "WcN FeR FiV ZgRb") != ESP_OK) {
         ESP_LOGE(TAG, "Failed to add secret code phrase: %s", SECRET_CODE_PHRASE);
+        return false;
+    }
+    registeredCommandCount++;
+
+    if (registeredCommandCount == 0) {
+        ESP_LOGE(TAG, "No valid speech commands were accepted by the active MultiNet model.");
         return false;
     }
 
@@ -505,13 +509,6 @@ std::string VoiceRecognition::pollRecognizedPhrase() {
     }
 
     if (state == ESP_MN_STATE_TIMEOUT) {
-        esp_mn_results_t *result = multinet->get_results(modelData);
-        if (result != nullptr && result->num > 0) {
-            printf("[MULTINET] TIMEOUT - best candidate: cmd_id=%d prob=%.3f string='%s'\n",
-                   result->command_id[0], result->prob[0], result->string);
-        } else {
-            printf("[MULTINET] TIMEOUT - speech window ended, no command matched\n");
-        }
         multinet->clean(modelData);
         return "";
     }

@@ -468,7 +468,7 @@ static bool tryUnlockWithSecret(const std::string& command) {
 
 static void printVoiceHelp() {
     printf("Voice flow:\n");
-    printf("  say \"%s\" first, then say one command clearly within %d seconds\n", WAKE_WORD, COMMAND_TIMEOUT_MS / 1000);
+    printf("  say a supported command clearly; wake word is optional in the current build\n");
     printf("Voice phrases to say exactly:\n");
     printf("  turn on the light             -> Light ON\n");
     printf("  turn off the light            -> Light OFF\n");
@@ -814,11 +814,13 @@ static void microphone_task(void *pvParameters) {
                 continue;
             }
 
+            const std::string command = mapVoicePhraseToCommand(phrase);
             const bool windowOpen = entry.timestampMs <= commandWindowDeadlineMs;
             const bool bypassWakeWindow =
                 (phrase == SECRET_CODE_PHRASE) ||
                 (phrase == "yes please") ||
-                (phrase == "no thanks");
+                (phrase == "no thanks") ||
+                !command.empty();
 
             if (!windowOpen && !bypassWakeWindow) {
                 if (liveMicLogEnabled) {
@@ -828,7 +830,6 @@ static void microphone_task(void *pvParameters) {
                 continue;
             }
 
-            const std::string command = mapVoicePhraseToCommand(phrase);
             if (!command.empty()) {
                 printf("[voice] executing: %s\n", command.c_str());
                 processCommand(normalizeCommand(command.c_str()));
