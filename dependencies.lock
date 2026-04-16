@@ -1,31 +1,45 @@
 dependencies:
-  esp-sr:
-    dependencies: []
-    source:
-      path: D:\ECO_Voice\components\esp-sr
-      type: local
-    version: 2.4.0
   espressif/dl_fft:
     dependencies: []
     source:
-      path: D:\ECO_Voice\components\espressif__dl_fft
+      path: /Users/kabilan/Documents/clg/GitHub/ECO_Voice/components/espressif__dl_fft
       type: local
     version: 0.3.1
   espressif/esp-dsp:
-    dependencies: []
+    component_hash: 42dce32d46ac93dc11f60d368e29a830e9661c7345d794b8a45c343479cae636
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.2'
     source:
-      path: D:\ECO_Voice\components\espressif__esp-dsp
-      type: local
+      registry_url: https://components.espressif.com
+      type: service
     version: 1.7.0
+  espressif/esp-sr:
+    component_hash: c518b25995cf03021a09442feedb7e40acba9f15d6aa903ebdfe0f657b08197b
+    dependencies:
+    - name: espressif/dl_fft
+      registry_url: https://components.espressif.com
+      require: private
+      version: '>=0.2.0'
+    - name: espressif/esp-dsp
+      registry_url: https://components.espressif.com
+      require: private
+      version: 1.7.0
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 2.4.0
   idf:
     source:
       type: idf
     version: 5.5.0
 direct_dependencies:
-- espressif/dl_fft
-- espressif/esp-dsp
 - espressif/esp-sr
 - idf
-manifest_hash: 261dc5a567663e7a7caf4093c7b1abcba82bed0b6ceb3e7b3dc0ff863d25f08a
+manifest_hash: 261b4e63973bc973e781796959e9d365dbf25cb5c388f7233250d90f6d064d7a
 target: esp32s3
 version: 2.0.0

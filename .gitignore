@@ -7,3 +7,5 @@
 *.pem
 .env
 .env.*
+main/secrets.h
+webapp/src/firebase.js
