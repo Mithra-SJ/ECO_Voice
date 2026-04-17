@@ -348,7 +348,8 @@ void VoiceRecognition::configureI2S() {
     i2s_config.sample_rate = SAMPLE_RATE;
     i2s_config.bits_per_sample = BITS_PER_SAMPLE;
     i2s_config.channel_format = I2S_CHANNEL;
-    i2s_config.communication_format = I2S_COMM_FORMAT_I2S;
+    i2s_config.communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_STAND_I2S);
+    //i2s_config.communication_format = I2S_COMM_FORMAT_I2S;
     i2s_config.intr_alloc_flags = ESP_INTR_FLAG_LEVEL1;
     i2s_config.dma_buf_count = 8;
     i2s_config.dma_buf_len = 256;
@@ -362,11 +363,20 @@ void VoiceRecognition::configureI2S() {
     pin_config.data_out_num = I2S_PIN_NO_CHANGE;
     pin_config.data_in_num = I2S_SD_PIN;
 
-    gpio_reset_pin((gpio_num_t)I2S_SD_PIN);
+    /*gpio_reset_pin((gpio_num_t)I2S_SD_PIN);
     gpio_set_direction((gpio_num_t)I2S_SD_PIN, GPIO_MODE_INPUT);
-    gpio_set_pull_mode((gpio_num_t)I2S_SD_PIN, GPIO_FLOATING);
+    gpio_set_pull_mode((gpio_num_t)I2S_SD_PIN, GPIO_FLOATING);*/
 
-    i2s_driver_install(I2S_PORT, &i2s_config, 0, nullptr);
+    //i2s_driver_install(I2S_PORT, &i2s_config, 0, nullptr);
+    esp_err_t err = i2s_driver_install(I2S_PORT, &i2s_config, 0, nullptr);
+    if (err != ESP_OK) {
+        Serial.printf("I2S Driver Install Failed: %d\n", err);
+    }
+    err = i2s_set_pin(I2S_PORT, &pin_config);
+    if (err != ESP_OK) {
+        Serial.printf("I2S Pin Set Failed: %d\n", err);
+    }
+
     i2s_set_pin(I2S_PORT, &pin_config);
     i2s_zero_dma_buffer(I2S_PORT);
 }
