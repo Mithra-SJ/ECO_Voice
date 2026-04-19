@@ -33,9 +33,9 @@
 #define MOTION_TIMEOUT_MS             5000   // ms — how long motion stays active after trigger
 
 // ===== I2S MICROPHONE (INMP441) =====
-#define I2S_SCK_PIN   5
-#define I2S_WS_PIN    4
-#define I2S_SD_PIN    6
+#define I2S_SCK_PIN   40
+#define I2S_WS_PIN    39
+#define I2S_SD_PIN    41
 
 // ===== VOICE RECOGNITION =====
 #define VOICE_COMMAND_TIMEOUT_MS  10000  // ms to listen for command after wake word
