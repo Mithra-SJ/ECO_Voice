@@ -370,11 +370,11 @@ void VoiceRecognition::configureI2S() {
     //i2s_driver_install(I2S_PORT, &i2s_config, 0, nullptr);
     esp_err_t err = i2s_driver_install(I2S_PORT, &i2s_config, 0, nullptr);
     if (err != ESP_OK) {
-        Serial.printf("I2S Driver Install Failed: %d\n", err);
+        ESP_LOGE(TAG, "I2S driver install failed: %s", esp_err_to_name(err));
     }
     err = i2s_set_pin(I2S_PORT, &pin_config);
     if (err != ESP_OK) {
-        Serial.printf("I2S Pin Set Failed: %d\n", err);
+        ESP_LOGE(TAG, "I2S pin set failed: %s", esp_err_to_name(err));
     }
 
     i2s_set_pin(I2S_PORT, &pin_config);

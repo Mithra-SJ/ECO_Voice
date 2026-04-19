@@ -9,9 +9,9 @@
 // ===== PIN DEFINITIONS =====
 
 // INMP441 I2S Microphone
-#define I2S_SCK_PIN       5
-#define I2S_WS_PIN        4
-#define I2S_SD_PIN        6
+#define I2S_SCK_PIN       40
+#define I2S_WS_PIN        39
+#define I2S_SD_PIN        41
 #define I2S_PORT          I2S_NUM_0
 
 // PIR Motion Sensor
@@ -44,7 +44,7 @@
 // ===== AUDIO SETTINGS =====
 #define SAMPLE_RATE       16000
 #define BITS_PER_SAMPLE   I2S_BITS_PER_SAMPLE_32BIT
-#define I2S_CHANNEL       I2S_CHANNEL_FMT_LEFT_ONLY
+#define I2S_CHANNEL       I2S_CHANNEL_FMT_ONLY_LEFT
 #define MIC_TARGET_PEAK   16000
 #define MIC_MAX_GAIN      20
 #define VOICE_MIN_RESULT_PROB        0.10f
