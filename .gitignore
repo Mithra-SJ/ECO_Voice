@@ -9,3 +9,5 @@
 .env.*
 main/secrets.h
 webapp/src/firebase.js
+webapp/node_modules/
+webapp/dist/
